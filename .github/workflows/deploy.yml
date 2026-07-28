@@ -1,0 +1,70 @@
+# Build Fire and publish dist/ to GitHub Pages.
+#
+# This is what makes phone-only development work: you edit + commit from your
+# phone (github.com or a mobile git app), this Action does the Node build you
+# can't run on the phone, and serves the result at a STABLE HTTPS URL:
+#
+#     https://zakstone7.github.io/even-fire/
+#
+# You configure that URL in the Even App once (scan docs/sideload-qr.png). Every
+# later push just refreshes the content behind the same URL — reopen the app.
+#
+# One-time repo setup: Settings → Pages → Build and deployment → Source:
+# "GitHub Actions". If a deploy from a feature branch is blocked, also allow it
+# under Settings → Environments → github-pages → Deployment branches.
+
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+      - 'claude/**'
+    paths-ignore:
+      - 'README.md'
+      - 'docs/**'
+      - 'LICENSE'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Let one deploy finish rather than cancelling it mid-flight.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
+      - name: Summary
+        run: |
+          echo "### Fire deployed 🔥" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Sideload URL: ${{ steps.deployment.outputs.page_url }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Open this in the Even App (or scan \`docs/sideload-qr.png\`)." >> "$GITHUB_STEP_SUMMARY"

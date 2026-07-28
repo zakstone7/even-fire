@@ -200,6 +200,43 @@ Requirements & gotchas:
 - `npm run serve` hosts a prebuilt `dist/` without watching; `npm run dev` does
   both.
 
+### Phone-only development (GitHub Pages)
+
+You can't run the Node build on a phone, so move it to CI. The workflow in
+[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) builds on every
+push and publishes `dist/` to a **stable HTTPS URL**:
+
+```
+https://zakstone7.github.io/even-fire/
+```
+
+Because the URL never changes, you point the Even App at it **once**; every
+later push just refreshes the content behind it.
+
+**One-time setup**
+
+1. Repo **Settings → Pages → Build and deployment → Source: “GitHub Actions”**.
+2. If a deploy from a feature branch is blocked, **Settings → Environments →
+   github-pages → Deployment branches** → allow your branch (or merge to `main`,
+   which is always allowed).
+3. In the Even App developer / EvenHub section, set the sideload target to the
+   URL above — scan [`docs/sideload-qr.png`](docs/sideload-qr.png) if it wants a
+   QR, or paste the URL if it offers a field.
+
+**Then, from the phone, forever after:** edit + commit (github.com or a mobile
+git app) → wait ~1 min for the Action → reopen Fire in the Even App.
+
+Notes:
+
+- The stable URL means you normally don’t re-scan — but if the app only accepts
+  a QR and you have no second screen to show it on, that first scan is the one
+  step that isn’t phone-only. Check the Even App for a paste-URL option.
+- GitHub Pages fronts a CDN with a short cache, so a change can take a few
+  minutes to appear; force-reload / reopen if you see the old build.
+- Any static host works the same way (**AWS S3 + CloudFront**, Netlify, …) —
+  the app is fully static after the build. Swap the deploy step; the sideload
+  flow is identical. Use HTTPS (iOS WebViews block plain-HTTP loads).
+
 ## Package & submit
 
 ```bash
