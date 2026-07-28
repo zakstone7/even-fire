@@ -1,0 +1,19 @@
+{
+  "package_id": "com.zak.fire",
+  "edition": "202601",
+  "name": "Fire",
+  "version": "0.1.0",
+  "min_app_version": "2.0.0",
+  "min_sdk_version": "0.0.10",
+  "entrypoint": "index.html",
+  "tagline": "Fire your webhooks from your glasses",
+  "description": "Tap a name on your Even G2 glasses and fire a preconfigured webhook. Bring your own IFTTT Webhooks key. The key is stored only on your phone (in the Even App); it is never shown on the glasses and never sent to any server other than IFTTT. Anyone with that key can trigger any applet on your IFTTT account. No accounts, no backend, no telemetry.",
+  "permissions": [
+    {
+      "name": "network",
+      "desc": "Sends trigger requests to the IFTTT Webhooks endpoint (maker.ifttt.com).",
+      "whitelist": ["https://maker.ifttt.com"]
+    }
+  ],
+  "supported_languages": ["en"]
+}

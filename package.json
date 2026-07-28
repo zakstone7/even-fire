@@ -1,0 +1,25 @@
+{
+  "name": "fire",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Tap a name on your Even G2 glasses, fire a webhook. Bring your own Webhooks key.",
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rimraf dist fire.ehpk",
+    "pack": "evenhub pack app.json dist -o fire.ehpk"
+  },
+  "dependencies": {
+    "@evenrealities/even_hub_sdk": "^0.0.12"
+  },
+  "devDependencies": {
+    "esbuild": "^0.21.0",
+    "rimraf": "^5.0.0",
+    "typescript": "^5.4.0"
+  },
+  "engines": {
+    "node": "^20.0.0 || >=22.0.0"
+  }
+}
