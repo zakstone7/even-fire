@@ -23,7 +23,7 @@ const LAUNCH_FALLBACK_MS = 2000;
 
 async function boot(): Promise<void> {
   const bridge = await waitForEvenAppBridge();
-  initDiag(bridge);
+  await initDiag(bridge); // load prior log so this launch appends, not overwrites
   diag({ boot: true });
 
   // Subscribe to the launch source SYNCHRONOUSLY, before awaiting anything else.

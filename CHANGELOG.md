@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.4
+
+- Fix: the diagnostics log was overwritten on every launch, so opening the phone
+  app to read it erased the glasses-launch trace. The log is now append-only
+  across launches (last 40 entries), so a glasses launch survives being read on
+  the phone.
+
 ## 0.1.3
 
 - Add a Copy button to the Glasses diagnostics panel to copy the full log to the
