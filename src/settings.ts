@@ -160,11 +160,21 @@ export class SettingsApp {
     const row = el('div', 'fire-row');
     row.append(
       button('Refresh', () => void this.loadDiag(pre)),
+      button('Copy', (e) => void this.copyDiag(pre, e.currentTarget as HTMLButtonElement), 'primary'),
       button('Clear', () => void this.clearDiagnostics(pre), 'danger'),
     );
     s.append(row, pre);
     void this.loadDiag(pre);
     return s;
+  }
+
+  private async copyDiag(pre: HTMLElement, btn: HTMLButtonElement): Promise<void> {
+    const ok = await copyText(pre.textContent ?? '');
+    const prev = btn.textContent;
+    btn.textContent = ok ? 'Copied!' : 'Copy failed';
+    setTimeout(() => {
+      btn.textContent = prev;
+    }, 1200);
   }
 
   private async loadDiag(pre: HTMLElement): Promise<void> {
@@ -300,6 +310,32 @@ export class SettingsApp {
 }
 
 // --- Tiny DOM helpers ------------------------------------------------------
+
+/** Copy text to the clipboard, with a fallback for WebViews lacking the API. */
+async function copyText(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    /* fall through to the execCommand path */
+  }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+    document.body.append(ta);
+    ta.select();
+    ta.setSelectionRange(0, text.length);
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  } catch {
+    return false;
+  }
+}
 
 function el(tag: string, className = '', text?: string): HTMLElement {
   const e = document.createElement(tag);

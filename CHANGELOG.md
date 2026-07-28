@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.3
+
+- Add a Copy button to the Glasses diagnostics panel to copy the full log to the
+  clipboard (with a WebView-safe fallback).
+
 ## 0.1.2
 
 - Add a "Glasses diagnostics" panel to the phone settings: the glasses launch
