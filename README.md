@@ -169,10 +169,36 @@ npm run build          # → dist/ (index.html + bundled app.js)
 
 # Preview in the simulator (a supplement to hardware, never a replacement):
 npx @evenrealities/evenhub-simulator dist
-
-# On device — sideload over the same Wi-Fi (no AP isolation / firewall):
-npx @evenrealities/evenhub-cli qr
 ```
+
+### Sideload onto the glasses
+
+`npm run dev` rebuilds on save **and** hosts `dist/` on your LAN (default port
+8080), then prints the exact `qr` command to run. `evenhub qr` itself only
+generates a QR for a URL — it does not host your files, which is why the dev
+server does.
+
+```bash
+npm run dev
+# → prints:  npx @evenrealities/evenhub-cli qr --ip <your-LAN-IP> --port 8080
+```
+
+Run that `qr` command in a second terminal and scan the QR in the Even App
+(phone → EvenHub / developer → scan). Open the app from the glasses menu for the
+on-glass trigger list, or the app menu for the phone settings page.
+
+Requirements & gotchas:
+
+- Phone and computer on the **same Wi-Fi**, no AP isolation / firewall — the #1
+  "QR scans but never loads" cause. Sanity-check by opening
+  `http://<your-LAN-IP>:8080/` in the phone browser (blank page is expected —
+  the bridge only exists inside the Even App — but it proves reachability).
+- A **desktop browser can't run the plugin**: there's no
+  `window.flutter_inappwebview` bridge outside the Even App, so storage, `fire()`
+  and the glasses containers only work via the app (or the simulator).
+- `evenhub login` is **not** needed to sideload — that's for `pack`/portal.
+- `npm run serve` hosts a prebuilt `dist/` without watching; `npm run dev` does
+  both.
 
 ## Package & submit
 
