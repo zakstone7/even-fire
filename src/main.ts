@@ -22,22 +22,27 @@ const LAUNCH_FALLBACK_MS = 2000;
 
 async function boot(): Promise<void> {
   const bridge = await waitForEvenAppBridge();
-  const config = await loadConfig(bridge);
 
-  let routed = false;
-  const route = (source: LaunchSource | 'fallback') => {
-    if (routed) return;
-    routed = true;
-    if (source === 'glassesMenu') {
-      showGlassesStatus();
-      void new GlassesApp(bridge, config).mount();
-    } else {
-      new SettingsApp(bridge, config).mount();
-    }
-  };
+  // Subscribe to the launch source SYNCHRONOUSLY, before awaiting anything else.
+  // The host pushes it exactly once shortly after load and never replays it, so
+  // if we await storage first we can miss it — which on a glasses launch leaves
+  // the display blank (the phone launch survives because it's the fallback too).
+  // Loading config runs in parallel so the first glasses paint stays prompt.
+  const sourcePromise = new Promise<LaunchSource | 'fallback'>((resolve) => {
+    bridge.onLaunchSource((s) => resolve(s));
+    setTimeout(() => resolve('fallback'), LAUNCH_FALLBACK_MS);
+  });
+  const configPromise = loadConfig(bridge);
 
-  bridge.onLaunchSource((source) => route(source));
-  setTimeout(() => route('fallback'), LAUNCH_FALLBACK_MS);
+  const [source, config] = await Promise.all([sourcePromise, configPromise]);
+  console.log('[fire] launch source:', source);
+
+  if (source === 'glassesMenu') {
+    showGlassesStatus();
+    await new GlassesApp(bridge, config).mount();
+  } else {
+    new SettingsApp(bridge, config).mount();
+  }
 }
 
 /** Minimal DOM shown while the app is being driven on the glasses. */

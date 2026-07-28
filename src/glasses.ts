@@ -137,10 +137,11 @@ export class GlassesApp {
       const result = await this.bridge.createStartUpPageContainer(
         new CreateStartUpPageContainer(page),
       );
+      console.log('[fire] createStartUpPageContainer →', result, 'screen:', this.screen);
       this.mounted = result === StartUpPageCreateResult.success;
       if (!this.mounted) {
         // Nothing more we can do on-glass; surface for debugging.
-        console.error('createStartUpPageContainer failed:', result);
+        console.error('[fire] createStartUpPageContainer failed:', result);
       }
       return;
     }
