@@ -13,12 +13,12 @@
 // `npm run dev` = --watch --serve: edit, save, re-open in the Even App to reload.
 
 import { build, context } from 'esbuild';
-import { rm, mkdir, cp, readFile, writeFile } from 'node:fs/promises';
+import { rm, mkdir, cp, readFile, writeFile, readdir } from 'node:fs/promises';
 import { existsSync, createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { networkInterfaces } from 'node:os';
-import { dirname, resolve, join, normalize, extname } from 'node:path';
+import { dirname, resolve, join, normalize, extname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = dirname(fileURLToPath(import.meta.url));
@@ -34,20 +34,42 @@ async function clean() {
   await mkdir(outdir, { recursive: true });
 }
 
-/** Copy static assets (html shell, icons) into dist/. */
-async function copyStatic() {
-  await cp(resolve(root, 'src/index.html'), resolve(outdir, 'index.html'));
+/** Pick the hashed JS bundle name (e.g. app-XZ3K9Q2A.js) from the metafile. */
+function bundleName(metafile) {
+  const out = Object.keys(metafile?.outputs ?? {}).find((p) => p.endsWith('.js'));
+  return out ? basename(out) : 'app.js';
+}
+
+/**
+ * Emit index.html (pointing at the current hashed bundle) + copy assets, and
+ * prune any stale app-*.js from previous builds. The content hash means every
+ * change produces a new filename, so a CDN (GitHub Pages) can never serve a
+ * stale bundle — reloads reflect the latest deploy immediately.
+ */
+async function emitHtmlAndAssets(jsFile) {
+  for (const f of await readdir(outdir)) {
+    if (/^app-.*\.js(\.map)?$/.test(f) && f !== jsFile && f !== `${jsFile}.map`) {
+      await rm(join(outdir, f), { force: true });
+    }
+  }
+  const template = await readFile(resolve(root, 'src/index.html'), 'utf8');
+  const html = template.replace('./app.js', `./${jsFile}`);
+  if (!html.includes(jsFile)) throw new Error('index.html has no ./app.js placeholder to hash');
+  await writeFile(resolve(outdir, 'index.html'), html);
   if (existsSync(resolve(root, 'assets'))) {
     await cp(resolve(root, 'assets'), resolve(outdir, 'assets'), { recursive: true });
   }
 }
 
 const buildOptions = {
-  entryPoints: [resolve(root, 'src/main.ts')],
+  // Object form fixes the output base name to `app` (→ app-[hash].js).
+  entryPoints: { app: resolve(root, 'src/main.ts') },
   bundle: true,
   format: 'esm',
   target: ['es2020'],
-  outfile: resolve(outdir, 'app.js'),
+  outdir,
+  entryNames: '[name]-[hash]',
+  metafile: true,
   sourcemap: watch ? 'inline' : false,
   minify: !watch,
   logLevel: 'info',
@@ -121,23 +143,25 @@ function startServer() {
 
 async function run() {
   await clean();
-  await copyStatic();
 
   if (watch) {
     const ctx = await context({
       ...buildOptions,
-      plugins: [{ name: 'copy-static-on-rebuild', setup: (b) => b.onEnd(() => copyStatic()) }],
+      plugins: [
+        {
+          name: 'emit-html-on-rebuild',
+          setup: (b) =>
+            b.onEnd((result) => {
+              if (result.metafile) return emitHtmlAndAssets(bundleName(result.metafile));
+            }),
+        },
+      ],
     });
     await ctx.watch();
     console.log('watching for changes…');
   } else {
-    await build(buildOptions);
-    // Sanity: entrypoint must exist in the output folder and reference the bundle.
-    const html = await readFile(resolve(outdir, 'index.html'), 'utf8');
-    if (!html.includes('app.js')) {
-      await writeFile(resolve(outdir, 'index.html'), html); // no-op guard
-      throw new Error('index.html does not reference app.js');
-    }
+    const result = await build(buildOptions);
+    await emitHtmlAndAssets(bundleName(result.metafile));
     console.log('build complete → dist/');
   }
 

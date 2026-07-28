@@ -3,6 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <!-- Discourage the WebView from caching this shell so it re-fetches and
+         picks up the newest hashed bundle after a deploy. The bundle filename
+         itself is content-hashed, so the JS can never be served stale. -->
+    <meta http-equiv="Cache-Control" content="no-store" />
     <title>Fire</title>
     <style>
       :root {

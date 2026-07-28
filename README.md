@@ -228,11 +228,12 @@ git app) → wait ~1 min for the Action → reopen Fire in the Even App.
 
 Notes:
 
-- The stable URL means you normally don’t re-scan — but if the app only accepts
-  a QR and you have no second screen to show it on, that first scan is the one
-  step that isn’t phone-only. Check the Even App for a paste-URL option.
-- GitHub Pages fronts a CDN with a short cache, so a change can take a few
-  minutes to appear; force-reload / reopen if you see the old build.
+- The stable URL means you don’t re-scan after the first time. Showing that
+  first QR on a second screen to scan is the only step that isn’t on-phone.
+- **No CDN staleness:** the JS bundle is content-hashed (`app-<hash>.js`), so a
+  new build is a new URL the CDN/WebView can’t serve stale, and `index.html` is
+  marked `no-store`. Reopen the app after the Action goes green and you get the
+  latest build — no waiting out a cache.
 - Any static host works the same way (**AWS S3 + CloudFront**, Netlify, …) —
   the app is fully static after the build. Swap the deploy step; the sideload
   flow is identical. Use HTTPS (iOS WebViews block plain-HTTP loads).
