@@ -30,6 +30,7 @@ import {
 } from '@evenrealities/even_hub_sdk';
 import type { FireConfig, Trigger } from './types';
 import { fire } from './ifttt';
+import { diag } from './diag';
 
 // --- Canvas + layout (top-left origin). Canvas is 576 x 288, 4-bit greyscale.
 const CANVAS_W = 576;
@@ -134,11 +135,17 @@ export class GlassesApp {
   /** First paint uses createStartUpPageContainer; later paints rebuild. */
   private async render(page: Page): Promise<void> {
     if (!this.mounted) {
-      const result = await this.bridge.createStartUpPageContainer(
-        new CreateStartUpPageContainer(page),
-      );
+      let result: StartUpPageCreateResult | undefined;
+      try {
+        result = await this.bridge.createStartUpPageContainer(new CreateStartUpPageContainer(page));
+      } catch (err) {
+        diag({ createError: String(err), screen: this.screen });
+        console.error('[fire] createStartUpPageContainer threw:', err);
+        return;
+      }
       console.log('[fire] createStartUpPageContainer →', result, 'screen:', this.screen);
       this.mounted = result === StartUpPageCreateResult.success;
+      diag({ createResult: result, mounted: this.mounted, screen: this.screen, items: this.orderedLabels().length });
       if (!this.mounted) {
         // Nothing more we can do on-glass; surface for debugging.
         console.error('[fire] createStartUpPageContainer failed:', result);
@@ -159,6 +166,16 @@ export class GlassesApp {
   // --- Event handling ------------------------------------------------------
 
   private handleEvent(event: EvenHubEvent): void {
+    diag({
+      evt: event.sysEvent
+        ? `sys:${event.sysEvent.eventType}`
+        : event.listEvent
+          ? `list:${event.listEvent.eventType}@${event.listEvent.currentSelectItemIndex}`
+          : event.textEvent
+            ? `text:${event.textEvent.eventType}`
+            : 'unknown',
+      onScreen: this.screen,
+    });
     // System events fire regardless of the active container.
     const sys = event.sysEvent;
     if (sys) {

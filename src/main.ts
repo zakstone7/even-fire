@@ -15,6 +15,7 @@ import { waitForEvenAppBridge, type LaunchSource } from '@evenrealities/even_hub
 import { loadConfig } from './config';
 import { GlassesApp } from './glasses';
 import { SettingsApp } from './settings';
+import { diag, initDiag } from './diag';
 
 // If the host never delivers a launch source (shouldn't happen in the WebView),
 // fall back to the phone settings so a visible page is never left blank.
@@ -22,6 +23,8 @@ const LAUNCH_FALLBACK_MS = 2000;
 
 async function boot(): Promise<void> {
   const bridge = await waitForEvenAppBridge();
+  initDiag(bridge);
+  diag({ boot: true });
 
   // Subscribe to the launch source SYNCHRONOUSLY, before awaiting anything else.
   // The host pushes it exactly once shortly after load and never replays it, so
@@ -36,11 +39,14 @@ async function boot(): Promise<void> {
 
   const [source, config] = await Promise.all([sourcePromise, configPromise]);
   console.log('[fire] launch source:', source);
+  diag({ source, keySet: !!config.key, triggers: config.triggers.length });
 
   if (source === 'glassesMenu') {
+    diag({ route: 'glasses' });
     showGlassesStatus();
     await new GlassesApp(bridge, config).mount();
   } else {
+    diag({ route: 'settings' });
     new SettingsApp(bridge, config).mount();
   }
 }
@@ -63,5 +69,6 @@ function fail(message: string): void {
 
 boot().catch((err) => {
   console.error(err);
+  diag({ bootError: String(err && (err.stack || err.message || err)) });
   fail('Fire could not start. Open this from the Even App.');
 });

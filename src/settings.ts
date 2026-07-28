@@ -15,6 +15,7 @@ import { MAX_TRIGGERS, type FireConfig, type Trigger } from './types';
 import { saveConfig } from './config';
 import { fire } from './ifttt';
 import { clampLabel, maskKey, uuid } from './util';
+import { clearDiag, readDiag } from './diag';
 
 export class SettingsApp {
   private root: HTMLElement;
@@ -135,7 +136,53 @@ export class SettingsApp {
 
   private render(): void {
     this.root.replaceChildren();
-    this.root.append(this.header(), this.disclosure(), this.keySection(), this.triggerSection());
+    this.root.append(
+      this.header(),
+      this.disclosure(),
+      this.keySection(),
+      this.triggerSection(),
+      this.diagSection(),
+    );
+  }
+
+  /** Shows what the last glasses launch recorded (see diag.ts). */
+  private diagSection(): HTMLElement {
+    const s = section('Glasses diagnostics');
+    s.append(
+      el(
+        'p',
+        'fire-help',
+        'Open the app from the glasses menu, then come back here and tap Refresh ' +
+          'to see what the glasses launch recorded.',
+      ),
+    );
+    const pre = el('pre', 'fire-diag');
+    const row = el('div', 'fire-row');
+    row.append(
+      button('Refresh', () => void this.loadDiag(pre)),
+      button('Clear', () => void this.clearDiagnostics(pre), 'danger'),
+    );
+    s.append(row, pre);
+    void this.loadDiag(pre);
+    return s;
+  }
+
+  private async loadDiag(pre: HTMLElement): Promise<void> {
+    const raw = await readDiag(this.bridge);
+    if (!raw) {
+      pre.textContent = 'No diagnostics recorded yet.';
+      return;
+    }
+    try {
+      pre.textContent = JSON.stringify(JSON.parse(raw), null, 2);
+    } catch {
+      pre.textContent = raw;
+    }
+  }
+
+  private async clearDiagnostics(pre: HTMLElement): Promise<void> {
+    await clearDiag(this.bridge);
+    pre.textContent = 'Cleared.';
   }
 
   private header(): HTMLElement {
@@ -331,6 +378,7 @@ function injectStyleOnce(): void {
   .fire-help { color: var(--muted); font-size: 13px; }
   .fire-help a { color: var(--accent); }
   .fire-status { font-size: 13px; color: var(--muted); min-height: 18px; }
+  .fire-diag { background: #0b0e0c; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-top: 8px; font: 12px/1.4 ui-monospace, monospace; color: #b9d9b9; white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow: auto; }
   `;
   const style = document.createElement('style');
   style.textContent = css;
