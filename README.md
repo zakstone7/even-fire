@@ -3,8 +3,10 @@
 **Tap a name on your Even G2 glasses, fire a webhook.**
 
 Fire shows a list of your triggers on the glasses. Scroll with the R1 ring or
-temple touchpad, tap to select, and it sends an HTTP request to IFTTT's Webhooks
-endpoint — firing that applet. No accounts, no backend, no telemetry.
+temple touchpad, tap to select, and it fires that trigger — either an **IFTTT**
+Webhooks applet or a **Raw** HTTP request (method, URL, headers, body) to an
+endpoint you configure. No accounts, no backend, no telemetry. See
+[Trigger kinds](#trigger-kinds).
 
 - Target: Even Realities G2 (+ optional R1 ring)
 - Distribution: Even Hub
@@ -117,34 +119,65 @@ index.html → src/     Web entry (built to dist/index.html)
 build.mjs             esbuild bundler → dist/ (index.html + app.js)
 src/
   main.ts             Bridge init; always drive glasses + render phone settings
-  types.ts            FireConfig / Trigger data model + limits
-  config.ts           Atomic load/save + migration through SDK storage
-  ifttt.ts            fire() — the CORS-safe request, two honest results
+  types.ts            FireConfig / Trigger (v2) data model + limits
+  config.ts           Atomic load/save + v1→v2 migration through SDK storage
+  execute.ts          send() (glasses, fire-and-forget) + test() (phone, detailed)
+  ifttt.ts            buildTriggerUrl() — the IFTTT Webhooks URL
   glasses.ts          Glasses UI state machine (OS list/text containers)
-  settings.ts         Phone settings page (key entry, CRUD, reorder, test)
+  settings.ts         Phone settings page (key, trigger table, editor, test)
+  diag.ts             Append-only glasses-launch diagnostics (read on the phone)
   util.ts             uuid, label clamp, key masking
 assets/               Monochrome icon foreground + background (+ generator)
 tools/genicons.py     Regenerates the greyscale icons (pure stdlib)
 ```
 
+## Trigger kinds
+
+Each trigger is one of two kinds:
+
+- **IFTTT** — fires an IFTTT Webhooks applet. Fire-and-forget POST with
+  `value1..3` as query params; CORS makes the outcome opaque, so the only honest
+  states are **Sent** / **No connection**. Needs the account's Webhooks key.
+- **Raw** — an arbitrary HTTP request: method, URL, headers, body. A primitive
+  curl/Postman. Needs no IFTTT key.
+
+**Raw + CORS.** Raw requests run in the WebView, so they're bound by CORS:
+`mode: 'cors'` is used to honor the chosen method/headers, which means the
+**status code and response body are readable only if the endpoint returns
+`Access-Control-Allow-Origin`**, and requests with custom headers / non-simple
+methods are preflighted (and blocked entirely if the endpoint doesn't answer).
+The phone "Test fire" shows the status + a truncated (≤500 char) body when
+readable, or a clear CORS/error message otherwise. A universal curl would need a
+proxy (a backend). On the glasses a Raw trigger shows Sent / No connection only.
+
 ## Data model
 
 Stored as one JSON blob under `fire.config.v1` (atomic reads/writes). Always
-branch on `version`; never assume shape (see `src/config.ts`).
+branch on `version`; never assume shape (see `src/config.ts`). v1 triggers
+(IFTTT-only, no `kind`) migrate to `kind: 'ifttt'`.
 
 ```ts
 interface FireConfig {
-  version: 1;
+  version: 2;
   key: string | null;                 // IFTTT Webhooks key
   triggers: Trigger[];                // capped at 12
 }
 interface Trigger {
   id: string;                         // uuid, stable across renames
   label: string;                      // shown on glasses, <= 20 chars
-  event: string;                      // IFTTT event name
-  values?: { value1?: string; value2?: string; value3?: string };
+  kind: 'ifttt' | 'raw';
   confirm: boolean;                   // two-step tap before firing
   order: number;
+  // kind === 'ifttt'
+  event?: string;                     // IFTTT event name
+  values?: { value1?: string; value2?: string; value3?: string };
+  // kind === 'raw'
+  raw?: {
+    method: 'GET'|'POST'|'PUT'|'PATCH'|'DELETE'|'HEAD';
+    url: string;
+    headers: { name: string; value: string }[];
+    body: string;
+  };
 }
 ```
 
@@ -152,13 +185,21 @@ interface Trigger {
 
 | Screen | When | Input |
 | --- | --- | --- |
-| **List** (root) | key set + ≥1 trigger | scroll = highlight, tap = select, double-tap = exit dialog |
+| **List** (root) | ≥1 trigger | scroll = highlight, tap = select, double-tap = exit dialog |
 | **Confirm** | selected trigger has `confirm: true` | 2-item list `Cancel` (default) / `Fire …` |
 | **Sending** | during the request | — |
-| **Sent** | request reached IFTTT | tap or ~2s auto-dismiss → list |
-| **No connection** | transport failure | tap = retry, double-tap = back |
-| **Key missing** | `key === null` | points to the phone app |
+| **Sent** | request reached the endpoint | tap or ~2s auto-dismiss → list |
+| **No connection** | transport failure (or Raw CORS block) | tap = retry, double-tap = back |
+| **Key missing** | firing an IFTTT trigger with no key set | points to the phone app |
 | **Empty** | no triggers | points to the phone app |
+
+An IFTTT-only setup needs the Webhooks key; a Raw-only setup needs no key.
+
+The `CLICK_EVENT` enum is value 0 and the transport strips zero-valued fields,
+so a tap arrives with `eventType` (and a 0 index) undefined — the handler treats
+a list/text event with a missing `eventType` as a click and a missing index as 0
+(this is standard; the same is done by the official even-toolkit and shipping G2
+apps).
 
 Repeat taps on the same trigger are debounced (~1.5s) to survive a bouncy pad.
 

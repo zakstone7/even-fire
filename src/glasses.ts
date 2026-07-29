@@ -181,9 +181,6 @@ export class GlassesApp {
             ? `text:${event.textEvent.eventType}`
             : 'unknown',
       onScreen: this.screen,
-      // Raw host payload — the parsed eventType/index are coming through
-      // undefined, so capture the real keys/values the host sends.
-      raw: event.jsonData ?? null,
     });
     // System events fire regardless of the active container.
     const sys = event.sysEvent;

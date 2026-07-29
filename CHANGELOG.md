@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.2
+
+- Diagnostics: stop logging the raw host event payload now that tap handling is
+  fixed; keep the lightweight event trace.
+- Docs: README documents Raw triggers, the v2 data model, and the CORS limits.
+
 ## 0.2.1
 
 - Fix: allow Raw triggers to reach arbitrary hosts. The network permission
