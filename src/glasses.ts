@@ -29,7 +29,8 @@ import {
   type EvenHubEvent,
 } from '@evenrealities/even_hub_sdk';
 import type { FireConfig, Trigger } from './types';
-import { send } from './execute';
+import { execute } from './execute';
+import { recordHistory } from './history';
 import { diag } from './diag';
 
 // --- Canvas + layout (top-left origin). Canvas is 576 x 288, 4-bit greyscale.
@@ -54,7 +55,15 @@ const SENT_DISMISS_MS = 2000;
 // Upper bound on a single fire attempt before we call it "no connection".
 const FIRE_TIMEOUT_MS = 8000;
 
-type Screen = 'list' | 'confirm' | 'sending' | 'sent' | 'no-connection' | 'key-missing' | 'empty';
+type Screen =
+  | 'list'
+  | 'confirm'
+  | 'sending'
+  | 'sent'
+  | 'result'
+  | 'no-connection'
+  | 'key-missing'
+  | 'empty';
 
 /** A page payload accepted by both create + rebuild (shared field shape). */
 interface Page {
@@ -77,6 +86,8 @@ export class GlassesApp {
 
   private sentTimer: ReturnType<typeof setTimeout> | null = null;
   private fireAbort: AbortController | null = null;
+  /** Message for the transient 'result' screen (relay fires show the status). */
+  private resultText = 'Sent';
 
   constructor(
     private readonly bridge: EvenAppBridge,
@@ -129,6 +140,8 @@ export class GlassesApp {
         return textPage('Sending…');
       case 'sent':
         return textPage('Sent');
+      case 'result':
+        return textPage(this.resultText);
       case 'no-connection':
         return textPage('No connection\nTap to retry');
       case 'key-missing':
@@ -251,6 +264,7 @@ export class GlassesApp {
         return;
       }
       case 'sent':
+      case 'result':
         this.clearSentTimer();
         void this.renderRoot();
         return;
@@ -282,23 +296,50 @@ export class GlassesApp {
     this.fireAbort = ctrl;
     const timer = setTimeout(() => ctrl.abort(), FIRE_TIMEOUT_MS);
 
-    const result = await send(trigger, this.config.key, ctrl.signal);
+    const r = await execute(trigger, {
+      key: this.config.key,
+      relay: this.config.relay,
+      readBody: false,
+      signal: ctrl.signal,
+    });
     clearTimeout(timer);
     if (this.fireAbort === ctrl) this.fireAbort = null;
 
-    if (result === 'sent') {
-      await this.setScreen('sent');
-      this.scheduleSentDismiss();
-    } else {
+    void recordHistory(
+      this.bridge,
+      {
+        ts: now,
+        label: trigger.label,
+        kind: trigger.kind,
+        via: r.via,
+        result: r.result,
+        status: r.status,
+        ok: r.ok,
+        error: r.error,
+      },
+      this.config.historyLimit,
+    );
+
+    if (r.result !== 'sent') {
       await this.setScreen('no-connection');
+      return;
     }
+    // A relay fire returns the real upstream status; show it. A direct fire
+    // (opaque under CORS) just shows "Sent".
+    if (typeof r.status === 'number') {
+      this.resultText = r.ok ? `Fired  ${r.status}` : `Failed  ${r.status}`;
+      await this.setScreen('result');
+    } else {
+      await this.setScreen('sent');
+    }
+    this.scheduleSentDismiss();
   }
 
   private scheduleSentDismiss(): void {
     this.clearSentTimer();
     this.sentTimer = setTimeout(() => {
       this.sentTimer = null;
-      if (this.screen === 'sent') void this.renderRoot();
+      if (this.screen === 'sent' || this.screen === 'result') void this.renderRoot();
     }, SENT_DISMISS_MS);
   }
 

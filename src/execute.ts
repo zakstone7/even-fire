@@ -1,125 +1,183 @@
 /**
- * Firing triggers — both kinds.
+ * Firing triggers — direct or via a self-hosted relay.
  *
- * Two entry points:
- *   - send(): fire-and-forget, used by the glasses. Resolves to 'sent' or
- *     'no-connection'; never rejects. Honest terminal states only.
- *   - test(): the phone "Test fire". For a Raw trigger it reads the status code
- *     and a truncated response body when CORS allows; for IFTTT it stays
- *     fire-and-forget (the response is opaque under CORS — see ifttt.ts).
+ * `execute()` is the single entry point for both the glasses (fire-and-forget)
+ * and the phone "Test fire" (which reads status/body). Routing:
  *
- * CORS reality for Raw: the request honors the chosen method/headers/body via
- * `mode: 'cors'`, so the response is only readable if the endpoint returns
- * Access-Control-Allow-Origin, and non-simple requests are preflighted (and
- * blocked entirely if the endpoint doesn't support CORS).
+ *   - trigger.useRelay + a configured relay  → POST the request spec to the
+ *     relay's /fire; it makes the call server-side (no CORS) and returns the
+ *     real { status, body }. Works for any host and any method/headers.
+ *   - otherwise                              → fire directly from the WebView:
+ *       · IFTTT: fire-and-forget no-cors POST (opaque result under CORS)
+ *       · Raw:   cors fetch (status/body readable only if the endpoint allows)
+ *
+ * Local endpoints must NOT use the relay (a cloud relay can't reach a LAN) —
+ * they stay direct-from-device. The settings UI enforces that default.
  */
 
-import { RESPONSE_PREVIEW_MAX, type Trigger } from './types';
+import { RESPONSE_PREVIEW_MAX, relayConfigured, type RelayConfig, type Trigger } from './types';
 import { buildTriggerUrl } from './ifttt';
 
-export type SendResult = 'sent' | 'no-connection';
-
-/** Fire-and-forget (glasses). Never rejects. */
-export async function send(
-  trigger: Trigger,
-  key: string | null,
-  signal?: AbortSignal,
-): Promise<SendResult> {
-  try {
-    if (trigger.kind === 'raw') {
-      await rawFetch(trigger, signal);
-    } else {
-      if (!key) return 'no-connection';
-      const url = buildTriggerUrl(trigger.event ?? '', key, trigger.values);
-      await fetch(url, { method: 'POST', mode: 'no-cors', cache: 'no-store', signal });
-    }
-    return 'sent';
-  } catch {
-    return 'no-connection';
-  }
-}
-
-export interface TestResult {
-  ok: boolean;
-  /** HTTP status when readable (Raw + CORS-enabled endpoint). */
+export interface FireResult {
+  /** Terminal transport state. 'sent' = a response came back (or reached IFTTT). */
+  result: 'sent' | 'no-connection';
+  via: 'direct' | 'relay';
+  /** Upstream HTTP status when known (relay always; direct-Raw when CORS allows). */
   status?: number;
   statusText?: string;
-  /** Truncated response body (Raw). */
+  ok?: boolean;
+  /** Truncated response body (phone display). */
   body?: string;
-  /** Informational note (e.g. IFTTT opacity). */
-  note?: string;
-  /** Error message when the request could not be made/read. */
+  /** Set when the request couldn't be made or the relay refused it. */
   error?: string;
+  /** Informational note (e.g. IFTTT opacity on a direct fire). */
+  note?: string;
 }
 
-/** Detailed test used by the phone settings page. */
-export async function test(
-  trigger: Trigger,
-  key: string | null,
-  signal?: AbortSignal,
-): Promise<TestResult> {
-  if (trigger.kind === 'raw') return testRaw(trigger, signal);
+export interface ExecuteCtx {
+  key: string | null;
+  relay?: RelayConfig;
+  /** true for the phone Test fire (read + return the response body). */
+  readBody?: boolean;
+  signal?: AbortSignal;
+}
 
-  // IFTTT: fire-and-forget; CORS hides the real outcome.
-  if (!key) return { ok: false, error: 'Set your Webhooks key first' };
-  if (!trigger.event?.trim()) return { ok: false, error: 'Event name required' };
-  try {
-    const url = buildTriggerUrl(trigger.event, key, trigger.values);
-    await fetch(url, { method: 'POST', mode: 'no-cors', cache: 'no-store', signal });
-    return { ok: true, note: 'Sent to IFTTT. CORS hides the real result (200 vs 401 vs 404).' };
-  } catch {
-    return { ok: false, error: 'No connection' };
+export async function execute(trigger: Trigger, ctx: ExecuteCtx): Promise<FireResult> {
+  if (trigger.useRelay && relayConfigured(ctx.relay)) return viaRelay(trigger, ctx, ctx.relay);
+  return direct(trigger, ctx);
+}
+
+// --- Relay path ------------------------------------------------------------
+
+interface RequestSpec {
+  method: string;
+  url: string;
+  headers: Record<string, string>;
+  body: string;
+}
+
+function specFor(trigger: Trigger, key: string | null): RequestSpec | { error: string } {
+  if (trigger.kind === 'raw') {
+    const raw = trigger.raw;
+    if (!raw?.url.trim()) return { error: 'URL required' };
+    const headers: Record<string, string> = {};
+    for (const h of raw.headers) if (h.name.trim()) headers[h.name.trim()] = h.value;
+    return { method: raw.method, url: raw.url.trim(), headers, body: raw.body };
   }
+  if (!key) return { error: 'Set your Webhooks key first' };
+  if (!trigger.event?.trim()) return { error: 'Event name required' };
+  return { method: 'POST', url: buildTriggerUrl(trigger.event, key, trigger.values), headers: {}, body: '' };
 }
 
-async function testRaw(trigger: Trigger, signal?: AbortSignal): Promise<TestResult> {
-  const raw = trigger.raw;
-  if (!raw?.url?.trim()) return { ok: false, error: 'URL required' };
+async function viaRelay(trigger: Trigger, ctx: ExecuteCtx, relay: RelayConfig): Promise<FireResult> {
+  const spec = specFor(trigger, ctx.key);
+  if ('error' in spec) return { result: 'no-connection', via: 'relay', error: spec.error };
+
+  const endpoint = `${relay.url.replace(/\/+$/, '')}/fire`;
   let res: Response;
   try {
-    res = await rawFetch(trigger, signal);
-  } catch (err) {
-    return { ok: false, error: corsHint(err) };
-  }
-  let body = '';
-  try {
-    body = await res.text();
+    res = await fetch(endpoint, {
+      method: 'POST',
+      mode: 'cors',
+      cache: 'no-store',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${relay.secret}` },
+      body: JSON.stringify(spec),
+      signal: ctx.signal,
+    });
   } catch {
-    /* body not readable */
+    return { result: 'no-connection', via: 'relay', error: 'Relay unreachable' };
   }
-  if (body.length > RESPONSE_PREVIEW_MAX) {
-    body = `${body.slice(0, RESPONSE_PREVIEW_MAX)}\n…(${body.length} chars total, truncated)`;
+
+  if (!res.ok) {
+    const error =
+      res.status === 401
+        ? 'Relay rejected the secret (check the relay secret)'
+        : res.status === 403
+          ? 'Relay blocked this host (private/reserved — fire local endpoints directly)'
+          : `Relay error ${res.status}`;
+    return { result: 'no-connection', via: 'relay', error };
   }
-  return { ok: res.ok, status: res.status, statusText: res.statusText, body };
+
+  let env: { ok?: boolean; status?: number; statusText?: string; body?: string; error?: string };
+  try {
+    env = await res.json();
+  } catch {
+    return { result: 'no-connection', via: 'relay', error: 'Bad relay response' };
+  }
+  if (env.error) return { result: 'no-connection', via: 'relay', error: env.error };
+
+  return {
+    result: 'sent',
+    via: 'relay',
+    status: env.status,
+    statusText: env.statusText,
+    ok: env.ok,
+    body: ctx.readBody ? truncate(env.body ?? '') : undefined,
+  };
 }
 
-function rawFetch(trigger: Trigger, signal?: AbortSignal): Promise<Response> {
-  const raw = trigger.raw;
-  if (!raw || !raw.url.trim()) throw new Error('URL required');
-  const headers: Record<string, string> = {};
-  for (const h of raw.headers) {
-    if (h.name.trim()) headers[h.name.trim()] = h.value;
+// --- Direct path -----------------------------------------------------------
+
+async function direct(trigger: Trigger, ctx: ExecuteCtx): Promise<FireResult> {
+  if (trigger.kind === 'raw') return directRaw(trigger, ctx);
+
+  // IFTTT: fire-and-forget; CORS hides the real outcome.
+  if (!ctx.key) return { result: 'no-connection', via: 'direct', error: 'Set your Webhooks key first' };
+  if (!trigger.event?.trim()) return { result: 'no-connection', via: 'direct', error: 'Event name required' };
+  try {
+    const url = buildTriggerUrl(trigger.event, ctx.key, trigger.values);
+    await fetch(url, { method: 'POST', mode: 'no-cors', cache: 'no-store', signal: ctx.signal });
+    return { result: 'sent', via: 'direct', note: 'Sent to IFTTT. CORS hides the real result — turn on the relay to see it.' };
+  } catch {
+    return { result: 'no-connection', via: 'direct' };
   }
+}
+
+async function directRaw(trigger: Trigger, ctx: ExecuteCtx): Promise<FireResult> {
+  const raw = trigger.raw;
+  if (!raw?.url.trim()) return { result: 'no-connection', via: 'direct', error: 'URL required' };
+  const headers: Record<string, string> = {};
+  for (const h of raw.headers) if (h.name.trim()) headers[h.name.trim()] = h.value;
   const method = raw.method.toUpperCase();
   const bodyless = method === 'GET' || method === 'HEAD';
-  return fetch(raw.url.trim(), {
-    method,
-    headers,
-    body: bodyless || raw.body === '' ? undefined : raw.body,
-    // 'cors' so the chosen method/headers are honored; the response is readable
-    // only if the endpoint returns permissive CORS headers.
-    mode: 'cors',
-    cache: 'no-store',
-    redirect: 'follow',
-    signal,
-  });
+
+  let res: Response;
+  try {
+    res = await fetch(raw.url.trim(), {
+      method,
+      headers,
+      body: bodyless || raw.body === '' ? undefined : raw.body,
+      mode: 'cors',
+      cache: 'no-store',
+      redirect: 'follow',
+      signal: ctx.signal,
+    });
+  } catch (err) {
+    return { result: 'no-connection', via: 'direct', error: corsHint(err) };
+  }
+
+  let body: string | undefined;
+  if (ctx.readBody) {
+    try {
+      body = truncate(await res.text());
+    } catch {
+      /* body not readable */
+    }
+  }
+  return { result: 'sent', via: 'direct', status: res.status, statusText: res.statusText, ok: res.ok, body };
+}
+
+// --- helpers ---------------------------------------------------------------
+
+function truncate(body: string): string {
+  if (body.length <= RESPONSE_PREVIEW_MAX) return body;
+  return `${body.slice(0, RESPONSE_PREVIEW_MAX)}\n…(${body.length} chars total, truncated)`;
 }
 
 function corsHint(err: unknown): string {
   const msg = String((err as { message?: string })?.message ?? err) || 'Request failed';
   return (
     `${msg}. If this is a CORS/network error, the endpoint must send ` +
-    `Access-Control-Allow-Origin (and answer preflight for custom headers/methods) ` +
-    `for the app to read the response.`
+    `Access-Control-Allow-Origin — or turn on the relay for this trigger.`
   );
 }

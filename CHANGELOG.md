@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.0
+
+- Self-hosted relay support. Configure a relay (URL + secret) you host yourself
+  (see relay/) and enable it per trigger to get real responses (status + body)
+  for any host, bypassing the WebView's CORS limits. Local endpoints stay direct
+  (relays can't reach a LAN) and the toggle is gated off for them.
+- Glasses now show the real relayed status (e.g. "Fired 200" / "Failed 401")
+  instead of just "Sent" when a trigger uses the relay.
+- Recent-calls history, stored on-device only, with a configurable cap.
+- Contact-support button that prefills recent diagnostics.
+- Config migrated to v3 (adds relay, per-trigger useRelay, history limit).
+
 ## 0.2.2
 
 - Diagnostics: stop logging the raw host event payload now that tap handling is
