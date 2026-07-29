@@ -35,7 +35,7 @@ import { clearDiag, readDiag } from './diag';
 const SUPPORT_EMAIL = 'support@example.com';
 
 /** Optional "Buy me a coffee" tip link. Replace with your own page URL. */
-const COFFEE_URL = 'https://www.buymeacoffee.com/yourname';
+const COFFEE_URL = 'https://www.buymeacoffee.com/zakstone7';
 
 /** Private/reserved URL → must fire direct (relay can't reach a LAN). */
 function isLocalUrl(url: string): boolean {
