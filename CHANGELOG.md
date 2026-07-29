@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1
+
+- Add an optional "Buy me a coffee" tip button to the phone settings. Fire stays
+  free with no accounts or backend; there is no paid tier. Set `COFFEE_URL` in
+  `src/settings.ts` to your own page.
+
 ## 0.3.0
 
 - Self-hosted relay support. Configure a relay (URL + secret) you host yourself

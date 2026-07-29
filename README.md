@@ -251,6 +251,9 @@ The phone settings include a **Contact support** button that opens your mail app
 with a prefilled message including recent diagnostics (a trivial, zero-backend
 ticket path). No data leaves the device unless you send the email.
 
+Fire is free — no accounts, no backend, no paid tier. The settings also carry an
+optional **Buy me a coffee** tip button (set `COFFEE_URL` in `src/settings.ts`).
+
 ## Build & run
 
 Requires Node 20 LTS or 22+.

@@ -34,6 +34,9 @@ import { clearDiag, readDiag } from './diag';
 /** Support contact — a mailto with diagnostics prefilled. */
 const SUPPORT_EMAIL = 'support@example.com';
 
+/** Optional "Buy me a coffee" tip link. Replace with your own page URL. */
+const COFFEE_URL = 'https://www.buymeacoffee.com/yourname';
+
 /** Private/reserved URL → must fire direct (relay can't reach a LAN). */
 function isLocalUrl(url: string): boolean {
   try {
@@ -108,6 +111,7 @@ export class SettingsApp {
       this.relaySection(),
       this.historySection(),
       this.supportSection(),
+      this.coffeeSection(),
       this.diagSection(),
     );
   }
@@ -560,6 +564,18 @@ export class SettingsApp {
       el('p', 'fire-help', 'Bug or question? Send a ticket — it prefills recent diagnostics to help debug.'),
     );
     s.append(button('Contact support', () => void this.contactSupport(), 'primary'));
+    return s;
+  }
+
+  // --- Buy me a coffee -----------------------------------------------------
+
+  private coffeeSection(): HTMLElement {
+    const s = section('Enjoying Fire?');
+    s.append(
+      el('p', 'fire-help', 'Fire is free with no accounts or backend. If it saves you a tap, you can leave a tip.'),
+    );
+    // Open on the user gesture, no window features (avoids iOS popup-block).
+    s.append(button('☕ Buy me a coffee', () => void window.open(COFFEE_URL, '_blank'), 'primary'));
     return s;
   }
 
