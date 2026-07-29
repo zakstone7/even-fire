@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.6
+
+- Diagnostics: capture the raw host event payload, to fix glasses taps not
+  firing (the parsed eventType/index were coming through undefined).
+
 ## 0.1.5
 
 - Fix: the glasses never rendered. Fire only created the glasses page when it
