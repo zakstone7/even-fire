@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.1
+
+- Fix: allow Raw triggers to reach arbitrary hosts. The network permission
+  whitelist only listed maker.ifttt.com, which restricts the app to that host;
+  a non-empty whitelist is an allowlist. Set it to [] (no host restriction, as
+  used by other apps with user-configured endpoints) and update the disclosure
+  to cover IFTTT + user-entered Raw endpoints.
+
 ## 0.2.0
 
 - Triggers are now shown in a reorderable table (up/down), with Edit and Delete.
