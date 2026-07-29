@@ -30,15 +30,20 @@ Cloudflare's dashboard. ~5 minutes.
 
 ### 1. Download the Worker
 
-**⬇ Direct download: <https://github.com/zakstone7/even-fire/raw/claude/self-hosted-relay/relay/_worker.js>**
+**Easiest — from the app:** open Fire on your phone → settings → **Relay** →
+**⬇ Download `_worker.js`**. One tap saves the file (it's bundled into the app,
+so this works offline). This is the recommended way.
 
-Tap that link, then save the file with your browser's **Save / Download** (on a
-phone: the share sheet → *Save to Files*, or the ⋮ menu → *Download*). Keep the
-name exactly **`_worker.js`** — Cloudflare only runs an uploaded file as a Worker
-when it's named that.
+Alternatives if you'd rather grab it from GitHub:
 
-(Or open [`_worker.js`](_worker.js) in the repo and use GitHub's **Download raw
-file** button — the ⤓ icon at the top-right of the file view.)
+- **Direct link:** <https://github.com/zakstone7/even-fire/raw/claude/self-hosted-relay/relay/_worker.js>
+  — tap, then save with your browser's **Save / Download** (share sheet →
+  *Save to Files*, or ⋮ → *Download*).
+- Or open [`_worker.js`](_worker.js) in the repo and use GitHub's **Download raw
+  file** button (the ⤓ icon at the top-right).
+
+Keep the name exactly **`_worker.js`** — Cloudflare only runs an uploaded file as
+a Worker when it's named that.
 
 ### 2. Create the Worker from it
 

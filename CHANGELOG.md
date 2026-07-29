@@ -7,6 +7,9 @@
   `_worker.js` you download and upload straight to the Cloudflare dashboard
   ("Upload Static Files"), no CLI needed; the relay README has a download link
   and step-by-step guide. The in-app Relay help links to that guide.
+- One-click **Download `_worker.js`** button in the phone Relay settings — the
+  Worker source is bundled at build time (from `relay/_worker.js`, single source
+  of truth), so it saves offline with a single tap. No GitHub round-trip needed.
 
 ## 0.3.1
 

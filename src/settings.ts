@@ -40,6 +40,10 @@ const COFFEE_URL = 'https://www.buymeacoffee.com/zakstone7';
 /** Where to get / deploy the self-hosted relay (the relay/ folder in the repo). */
 const RELAY_REPO_URL = 'https://github.com/zakstone7/even-fire/tree/main/relay';
 
+/** The relay Worker source, inlined at build time from relay/_worker.js (see
+ *  build.mjs). Lets the app offer a one-click download of `_worker.js`. */
+declare const __RELAY_WORKER_SRC__: string;
+
 /** Private/reserved URL → must fire direct (relay can't reach a LAN). */
 function isLocalUrl(url: string): boolean {
   try {
@@ -492,6 +496,15 @@ export class SettingsApp {
     repo.textContent = 'the relay setup guide';
     help.append(repo, document.createTextNode(', then enable it per trigger. Leave blank to fire everything directly.'));
     s.append(help);
+
+    // One-click download of the Worker file to upload to Cloudflare (step 1 of
+    // the guide). The source is inlined at build time, so this is offline.
+    const dl = button('⬇ Download _worker.js', () => this.downloadWorker(), 'primary');
+    s.append(dl);
+    s.append(
+      el('p', 'fire-help', 'Step 1 of setup: save this and upload it to a Cloudflare Worker (details in the guide).'),
+    );
+
     const relay = this.config.relay ?? { url: '', secret: '' };
 
     const urlField = field('Relay URL', relay.url, (v) => void this.setRelayField('url', v));
@@ -521,6 +534,28 @@ export class SettingsApp {
     const next: RelayConfig = { ...cur, [part]: value.trim() };
     this.config.relay = next.url || next.secret ? next : undefined;
     await this.persist();
+  }
+
+  /** Save the relay Worker (`_worker.js`) to the device — one click, offline. */
+  private downloadWorker(): void {
+    const src = __RELAY_WORKER_SRC__;
+    try {
+      const blob = new Blob([src], { type: 'text/javascript' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = '_worker.js';
+      a.rel = 'noopener';
+      document.body.append(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+    } catch {
+      // Fallback for WebViews that block blob-URL downloads: open a data URL in a
+      // new tab so the user can save it manually.
+      const data = 'data:text/javascript;charset=utf-8,' + encodeURIComponent(src);
+      window.open(data, '_blank');
+    }
   }
 
   // --- Recent calls (on-device history) ------------------------------------
