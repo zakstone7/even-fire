@@ -353,9 +353,19 @@ function listPage(items: string[]): Page {
 }
 
 function textPage(content: string): Page {
+  const title = new TextContainerProperty({
+    xPosition: MARGIN,
+    yPosition: 8,
+    width: CONTENT_W,
+    height: 40,
+    containerID: TITLE_ID,
+    containerName: 'fire-title',
+    isEventCapture: 0, // label only; the message text captures input
+    content: TITLE,
+  });
   const text = new TextContainerProperty({
     xPosition: MARGIN,
-    yPosition: Math.round(CANVAS_H / 2) - 40,
+    yPosition: Math.round(CANVAS_H / 2) - 20,
     width: CONTENT_W,
     height: 80,
     containerID: TEXT_ID,
@@ -363,5 +373,5 @@ function textPage(content: string): Page {
     isEventCapture: 1,
     content,
   });
-  return { containerTotalNum: 1, textObject: [text] };
+  return { containerTotalNum: 2, textObject: [title, text] };
 }

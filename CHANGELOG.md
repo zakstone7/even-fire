@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.9
+
+- Show the "Fire" title on the message screens too (Sending / Sent / No
+  connection / Key missing / Empty), for consistency with the trigger list.
+
 ## 0.1.8
 
 - Add a "Fire" title above the trigger list on the glasses.
