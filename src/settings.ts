@@ -32,7 +32,7 @@ import { clampLabel, maskKey, uuid } from './util';
 import { clearDiag, readDiag } from './diag';
 
 /** Support contact — a mailto with diagnostics prefilled. */
-const SUPPORT_EMAIL = 'support@example.com';
+const SUPPORT_EMAIL = 'zakstone7@gmail.com';
 
 /** Optional "Buy me a coffee" tip link. Replace with your own page URL. */
 const COFFEE_URL = 'https://www.buymeacoffee.com/zakstone7';
