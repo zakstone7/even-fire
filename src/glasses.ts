@@ -38,9 +38,14 @@ const CANVAS_H = 288;
 const MARGIN = 28;
 const CONTENT_W = CANVAS_W - MARGIN * 2;
 
-// Stable container IDs. Each screen mounts exactly one capturing container.
+// Stable container IDs. The capturing container is the list (or the text on
+// message screens); the title is a non-capturing label.
 const LIST_ID = 1;
 const TEXT_ID = 2;
+const TITLE_ID = 3;
+
+/** Title shown at the top of the trigger list. */
+const TITLE = 'Fire';
 
 // Debounce window for repeat taps on the same trigger (bouncy touchpad guard).
 const DEBOUNCE_MS = 1500;
@@ -317,11 +322,23 @@ function cancelLabel(): string {
 }
 
 function listPage(items: string[]): Page {
+  const TITLE_H = 40;
+  const LIST_TOP = TITLE_H + 12;
+  const title = new TextContainerProperty({
+    xPosition: MARGIN,
+    yPosition: 8,
+    width: CONTENT_W,
+    height: TITLE_H,
+    containerID: TITLE_ID,
+    containerName: 'fire-title',
+    isEventCapture: 0, // label only; the list captures input
+    content: TITLE,
+  });
   const list = new ListContainerProperty({
     xPosition: MARGIN,
-    yPosition: MARGIN,
+    yPosition: LIST_TOP,
     width: CONTENT_W,
-    height: CANVAS_H - MARGIN * 2,
+    height: CANVAS_H - LIST_TOP - MARGIN,
     containerID: LIST_ID,
     containerName: 'fire-list',
     isEventCapture: 1,
@@ -332,7 +349,7 @@ function listPage(items: string[]): Page {
       itemName: items,
     }),
   });
-  return { containerTotalNum: 1, listObject: [list] };
+  return { containerTotalNum: 2, listObject: [list], textObject: [title] };
 }
 
 function textPage(content: string): Page {

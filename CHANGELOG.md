@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.8
+
+- Add a "Fire" title above the trigger list on the glasses.
+
 ## 0.1.7
 
 - Fix: tapping a trigger on the glasses did nothing. CLICK_EVENT is enum value
