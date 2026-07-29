@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.7
+
+- Fix: tapping a trigger on the glasses did nothing. CLICK_EVENT is enum value
+  0 and the transport strips zero-valued fields, so a tap arrives with
+  eventType (and a 0 index) undefined. Fire now treats a list/text event with a
+  missing eventType as a click and a missing index as 0 — so taps fire the
+  selected trigger.
+
 ## 0.1.6
 
 - Diagnostics: capture the raw host event payload, to fix glasses taps not

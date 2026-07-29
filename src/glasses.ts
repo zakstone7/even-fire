@@ -193,8 +193,18 @@ export class GlassesApp {
     }
 
     // The active capturing container reports taps as list or text events.
-    const type = event.listEvent?.eventType ?? event.textEvent?.eventType;
-    const index = event.listEvent?.currentSelectItemIndex ?? 0;
+    const listEvt = event.listEvent;
+    const textEvt = event.textEvent;
+    if (!listEvt && !textEvt) return;
+
+    // CLICK_EVENT is enum value 0 and the transport strips zero-valued fields,
+    // so a tap arrives with eventType === undefined. Treat a missing eventType
+    // on a list/text event as a click. A selected index of 0 is likewise
+    // stripped to undefined, so default it to 0. (Non-zero eventTypes — scroll
+    // (1/2), double-click (3) — arrive intact.)
+    const rawType = listEvt?.eventType ?? textEvt?.eventType;
+    const type = rawType == null ? OsEventTypeList.CLICK_EVENT : rawType;
+    const index = listEvt?.currentSelectItemIndex ?? 0;
 
     if (type === OsEventTypeList.DOUBLE_CLICK_EVENT) {
       this.handleDoubleClick();
