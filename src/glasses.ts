@@ -29,7 +29,7 @@ import {
   type EvenHubEvent,
 } from '@evenrealities/even_hub_sdk';
 import type { FireConfig, Trigger } from './types';
-import { fire } from './ifttt';
+import { send } from './execute';
 import { diag } from './diag';
 
 // --- Canvas + layout (top-left origin). Canvas is 576 x 288, 4-bit greyscale.
@@ -105,9 +105,10 @@ export class GlassesApp {
 
   // --- Rendering -----------------------------------------------------------
 
-  /** Root screen depends on config: key-missing → empty → list. */
+  /** Root screen: empty when there are no triggers, otherwise the list.
+   * (The IFTTT key is only needed to fire an IFTTT trigger, checked at fire
+   * time — a raw-only setup never needs a key.) */
   private async renderRoot(): Promise<void> {
-    if (!this.config.key) return this.setScreen('key-missing');
     if (this.config.triggers.length === 0) return this.setScreen('empty');
     return this.setScreen('list');
   }
@@ -269,7 +270,7 @@ export class GlassesApp {
     if (this.lastFire && this.lastFire.id === trigger.id && now - this.lastFire.ts < DEBOUNCE_MS) {
       return;
     }
-    if (!this.config.key) {
+    if (trigger.kind === 'ifttt' && !this.config.key) {
       void this.setScreen('key-missing');
       return;
     }
@@ -284,7 +285,7 @@ export class GlassesApp {
     this.fireAbort = ctrl;
     const timer = setTimeout(() => ctrl.abort(), FIRE_TIMEOUT_MS);
 
-    const result = await fire(trigger, this.config.key, ctrl.signal);
+    const result = await send(trigger, this.config.key, ctrl.signal);
     clearTimeout(timer);
     if (this.fireAbort === ctrl) this.fireAbort = null;
 

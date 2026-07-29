@@ -4,6 +4,8 @@
  * The whole FireConfig is stored as one JSON string under STORAGE_KEY so a
  * read or write is atomic. `load()` is defensive: bad JSON, a missing blob,
  * or an unknown version all degrade to a valid empty config rather than throw.
+ *
+ * Migration: v1 triggers (IFTTT-only, no `kind`) are upgraded to kind 'ifttt'.
  */
 
 import type { EvenAppBridge } from '@evenrealities/even_hub_sdk';
@@ -11,9 +13,15 @@ import {
   CONFIG_VERSION,
   STORAGE_KEY,
   MAX_TRIGGERS,
+  HTTP_METHODS,
   emptyConfig,
+  emptyRawConfig,
   type FireConfig,
+  type HttpMethod,
+  type RawConfig,
+  type RawHeader,
   type Trigger,
+  type TriggerKind,
 } from './types';
 import { clampLabel } from './util';
 
@@ -27,10 +35,7 @@ export async function loadConfig(bridge: EvenAppBridge): Promise<FireConfig> {
   return parseConfig(raw);
 }
 
-export async function saveConfig(
-  bridge: EvenAppBridge,
-  config: FireConfig,
-): Promise<boolean> {
+export async function saveConfig(bridge: EvenAppBridge, config: FireConfig): Promise<boolean> {
   const clean = normalize(config);
   try {
     return await bridge.setLocalStorage(STORAGE_KEY, JSON.stringify(clean));
@@ -51,31 +56,25 @@ export function parseConfig(raw: string | null | undefined): FireConfig {
   if (typeof data !== 'object' || data === null) return emptyConfig();
   const obj = data as Record<string, unknown>;
 
-  // Branch on version. Only v1 exists today; unknown versions fall back safely.
-  switch (obj.version) {
-    case CONFIG_VERSION:
-      return normalize({
-        version: CONFIG_VERSION,
-        key: typeof obj.key === 'string' ? obj.key : null,
-        triggers: Array.isArray(obj.triggers) ? (obj.triggers as Trigger[]) : [],
-      });
-    default:
-      return emptyConfig();
+  // v1 (no kind) and v2 (with kind) both parse into the current shape via
+  // normalize(), which fills in kind: 'ifttt' for legacy triggers. Anything
+  // else falls back to empty.
+  if (obj.version === 1 || obj.version === CONFIG_VERSION) {
+    return normalize({
+      version: CONFIG_VERSION,
+      key: typeof obj.key === 'string' ? obj.key : null,
+      triggers: Array.isArray(obj.triggers) ? (obj.triggers as Trigger[]) : [],
+    });
   }
+  return emptyConfig();
 }
 
 /** Coerce a config into a sound shape: valid triggers, contiguous order, cap. */
 export function normalize(config: FireConfig): FireConfig {
   const triggers = (config.triggers ?? [])
-    .filter((t): t is Trigger => !!t && typeof t.id === 'string' && typeof t.event === 'string')
-    .map((t) => ({
-      id: t.id,
-      label: clampLabel(String(t.label ?? '')) || t.event,
-      event: String(t.event).trim(),
-      values: sanitizeValues(t.values),
-      confirm: Boolean(t.confirm),
-      order: Number.isFinite(t.order) ? t.order : 0,
-    }))
+    .filter((t): t is Trigger => !!t && typeof t.id === 'string')
+    .map(normalizeTrigger)
+    .filter((t): t is Trigger => t !== null)
     .sort((a, b) => a.order - b.order)
     .slice(0, MAX_TRIGGERS)
     .map((t, i) => ({ ...t, order: i })); // re-index contiguously
@@ -84,6 +83,47 @@ export function normalize(config: FireConfig): FireConfig {
     version: CONFIG_VERSION,
     key: config.key && config.key.trim() ? config.key.trim() : null,
     triggers,
+  };
+}
+
+function normalizeTrigger(t: Trigger): Trigger | null {
+  // Legacy (v1) triggers have no `kind` but do have `event` → treat as IFTTT.
+  const kind: TriggerKind = t.kind === 'raw' ? 'raw' : 'ifttt';
+  const base = {
+    id: t.id,
+    kind,
+    confirm: Boolean(t.confirm),
+    order: Number.isFinite(t.order) ? t.order : 0,
+  };
+
+  if (kind === 'raw') {
+    const raw = normalizeRaw(t.raw);
+    if (!raw.url) return null; // a raw trigger needs a URL
+    return { ...base, label: clampLabel(String(t.label ?? '')) || 'Request', raw };
+  }
+
+  const event = String(t.event ?? '').trim();
+  const label = clampLabel(String(t.label ?? '')) || event;
+  if (!label) return null;
+  return { ...base, label, event, values: sanitizeValues(t.values) };
+}
+
+function normalizeRaw(raw: RawConfig | undefined): RawConfig {
+  if (!raw) return emptyRawConfig();
+  const method = (HTTP_METHODS as readonly string[]).includes(String(raw.method).toUpperCase())
+    ? (String(raw.method).toUpperCase() as HttpMethod)
+    : 'GET';
+  const headers: RawHeader[] = Array.isArray(raw.headers)
+    ? raw.headers
+        .filter((h) => h && typeof h.name === 'string')
+        .map((h) => ({ name: String(h.name).trim(), value: String(h.value ?? '') }))
+        .filter((h) => h.name.length > 0)
+    : [];
+  return {
+    method,
+    url: String(raw.url ?? '').trim(),
+    headers,
+    body: typeof raw.body === 'string' ? raw.body : '',
   };
 }
 

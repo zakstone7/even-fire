@@ -1,25 +1,40 @@
 /**
- * Phone-side settings page (plain DOM — this is where there's real screen
- * space). Reached when the app is launched from the Even App menu.
+ * Phone-side settings page.
  *
- * Does: paste/replace the Webhooks key (masked after entry), add / edit /
- * reorder / delete triggers, per-trigger confirm toggle, optional value1..3
- * presets, and a per-trigger "Test fire". Persists after every mutation.
+ * Two views:
+ *   - list view: the IFTTT key, a table of triggers (reorder / edit / delete),
+ *     and an "Add trigger" button.
+ *   - editor view: add/edit one trigger. A kind radio (IFTTT / Raw) switches
+ *     the form. "Test fire" runs the request; for Raw it shows the status code
+ *     and a truncated response body (subject to CORS — see execute.ts).
  *
- * Security disclosure is shown inline and unmissable: the Webhooks key grants
- * access to every applet on the account and lives in phone-side storage.
+ * The editor works on a clone of the trigger so Cancel discards cleanly.
  */
 
 import type { EvenAppBridge } from '@evenrealities/even_hub_sdk';
-import { MAX_TRIGGERS, type FireConfig, type Trigger } from './types';
+import {
+  HTTP_METHODS,
+  MAX_TRIGGERS,
+  emptyRawConfig,
+  type FireConfig,
+  type HttpMethod,
+  type Trigger,
+  type TriggerKind,
+} from './types';
 import { saveConfig } from './config';
-import { fire } from './ifttt';
+import { test, type TestResult } from './execute';
 import { clampLabel, maskKey, uuid } from './util';
 import { clearDiag, readDiag } from './diag';
 
+interface EditState {
+  draft: Trigger;
+  isNew: boolean;
+}
+
 export class SettingsApp {
   private root: HTMLElement;
-  private editingKey = false;
+  private editingKey: boolean;
+  private editing: EditState | null = null;
 
   constructor(
     private readonly bridge: EvenAppBridge,
@@ -45,9 +60,78 @@ export class SettingsApp {
     return [...this.config.triggers].sort((a, b) => a.order - b.order);
   }
 
-  // --- Mutations -----------------------------------------------------------
+  // --- Rendering -----------------------------------------------------------
 
-  private async saveKey(value: string): Promise<void> {
+  private render(): void {
+    injectStyleOnce();
+    this.root.replaceChildren();
+    this.root.append(this.header());
+    if (this.editing) {
+      this.root.append(this.editorView(this.editing));
+      return;
+    }
+    this.root.append(this.disclosure(), this.keySection(), this.triggerSection(), this.diagSection());
+  }
+
+  private header(): HTMLElement {
+    const h = el('header', 'fire-header');
+    h.append(el('h1', 'fire-title', 'Fire'), el('p', 'fire-tagline', 'Fire your webhooks from your glasses.'));
+    return h;
+  }
+
+  private disclosure(): HTMLElement {
+    const box = el('div', 'fire-disclosure');
+    box.append(
+      el('strong', '', 'About your IFTTT key'),
+      el(
+        'p',
+        '',
+        'The IFTTT Webhooks key can trigger any applet on your account. Fire stores ' +
+          'it only on this phone, never on the glasses or a server. Raw triggers do ' +
+          'not use it.',
+      ),
+    );
+    return box;
+  }
+
+  // --- Key ----------------------------------------------------------------
+
+  private keySection(): HTMLElement {
+    const s = section('IFTTT Webhooks key');
+    if (this.config.key && !this.editingKey) {
+      const row = el('div', 'fire-row');
+      row.append(el('code', 'fire-mask', maskKey(this.config.key)));
+      row.append(
+        button('Replace', () => {
+          this.editingKey = true;
+          this.render();
+        }),
+        button('Clear', () => void this.setKey(''), 'danger'),
+      );
+      s.append(row);
+    } else {
+      const input = document.createElement('input');
+      input.type = 'password';
+      input.autocomplete = 'off';
+      input.spellcheck = false;
+      input.placeholder = 'Paste your Webhooks key';
+      input.className = 'fire-input';
+      const row = el('div', 'fire-row');
+      row.append(input, button('Save', () => void this.setKey(input.value), 'primary'));
+      s.append(row);
+      const help = el('p', 'fire-help');
+      const a = document.createElement('a');
+      a.href = 'https://ifttt.com/maker_webhooks/settings';
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      a.textContent = 'ifttt.com/maker_webhooks/settings';
+      help.append(document.createTextNode('Get your key at '), a);
+      s.append(help);
+    }
+    return s;
+  }
+
+  private async setKey(value: string): Promise<void> {
     const key = value.trim();
     this.config.key = key || null;
     this.editingKey = !this.config.key;
@@ -55,51 +139,47 @@ export class SettingsApp {
     this.render();
   }
 
-  private async clearKey(): Promise<void> {
-    this.config.key = null;
-    this.editingKey = true;
-    await this.persist();
-    this.render();
+  // --- Triggers table ------------------------------------------------------
+
+  private triggerSection(): HTMLElement {
+    const s = section('Triggers');
+    const list = this.ordered();
+    if (list.length === 0) {
+      s.append(el('p', 'fire-help', 'No triggers yet. Add one below.'));
+    } else {
+      s.append(this.triggerTable(list));
+    }
+    const atCap = this.config.triggers.length >= MAX_TRIGGERS;
+    const add = button(atCap ? `Max ${MAX_TRIGGERS} reached` : '+ Add trigger', () => this.startAdd(), 'primary');
+    if (atCap) add.disabled = true;
+    s.append(add);
+    return s;
   }
 
-  private async addTrigger(): Promise<void> {
-    if (this.config.triggers.length >= MAX_TRIGGERS) return;
-    const order = this.config.triggers.length;
-    this.config.triggers.push({
-      id: uuid(),
-      label: `Trigger ${order + 1}`,
-      event: '',
-      confirm: false,
-      order,
+  private triggerTable(list: Trigger[]): HTMLElement {
+    const table = document.createElement('table');
+    table.className = 'fire-table';
+    const head = document.createElement('tr');
+    for (const label of ['#', 'Trigger', 'Type', '']) head.append(el('th', '', label));
+    table.append(head);
+
+    list.forEach((t, i) => {
+      const tr = document.createElement('tr');
+      tr.append(el('td', 'fire-idx', String(i + 1)));
+      const name = el('td', 'fire-name', t.label);
+      tr.append(name);
+      tr.append(cell(badge(t.kind)));
+
+      const actions = el('div', 'fire-rowactions');
+      const up = button('↑', () => void this.move(t.id, -1));
+      const down = button('↓', () => void this.move(t.id, 1));
+      if (i === 0) up.disabled = true;
+      if (i === list.length - 1) down.disabled = true;
+      actions.append(up, down, button('Edit', () => this.startEdit(t)), button('✕', () => void this.remove(t.id), 'danger'));
+      tr.append(cell(actions));
+      table.append(tr);
     });
-    await this.persist();
-    this.render();
-  }
-
-  private async updateTrigger(id: string, patch: Partial<Trigger>): Promise<void> {
-    const t = this.config.triggers.find((x) => x.id === id);
-    if (!t) return;
-    Object.assign(t, patch);
-    if (patch.label !== undefined) t.label = clampLabel(patch.label) || t.event || 'Trigger';
-    await this.persist();
-    // No re-render on field edits — keeps input focus.
-  }
-
-  private async setValue(id: string, key: 'value1' | 'value2' | 'value3', v: string): Promise<void> {
-    const t = this.config.triggers.find((x) => x.id === id);
-    if (!t) return;
-    const values = { ...(t.values ?? {}) };
-    if (v.trim()) values[key] = v;
-    else delete values[key];
-    t.values = Object.keys(values).length ? values : undefined;
-    await this.persist();
-  }
-
-  private async deleteTrigger(id: string): Promise<void> {
-    this.config.triggers = this.config.triggers.filter((x) => x.id !== id);
-    this.reindex();
-    await this.persist();
-    this.render();
+    return table;
   }
 
   private async move(id: string, dir: -1 | 1): Promise<void> {
@@ -108,55 +188,220 @@ export class SettingsApp {
     const j = i + dir;
     if (i < 0 || j < 0 || j >= list.length) return;
     [list[i].order, list[j].order] = [list[j].order, list[i].order];
-    this.reindex();
+    this.ordered().forEach((t, k) => (t.order = k));
     await this.persist();
     this.render();
   }
 
-  private reindex(): void {
+  private async remove(id: string): Promise<void> {
+    this.config.triggers = this.config.triggers.filter((x) => x.id !== id);
     this.ordered().forEach((t, i) => (t.order = i));
+    await this.persist();
+    this.render();
   }
 
-  private async testFire(id: string, statusEl: HTMLElement): Promise<void> {
-    const t = this.config.triggers.find((x) => x.id === id);
-    if (!t) return;
-    if (!this.config.key) {
-      statusEl.textContent = 'Set a key first';
-      return;
-    }
-    if (!t.event.trim()) {
-      statusEl.textContent = 'Event name required';
-      return;
-    }
-    statusEl.textContent = 'Sending…';
-    const result = await fire(t, this.config.key);
-    // Honest wording: "Sent" ≠ "the applet ran" (CORS hides the real outcome).
-    statusEl.textContent = result === 'sent' ? 'Sent (reached IFTTT)' : 'No connection';
+  // --- Editor --------------------------------------------------------------
+
+  private startAdd(): void {
+    this.editing = {
+      isNew: true,
+      draft: {
+        id: uuid(),
+        label: '',
+        kind: 'ifttt',
+        confirm: false,
+        order: this.config.triggers.length,
+        event: '',
+      },
+    };
+    this.render();
   }
 
-  // --- Rendering (small DOM helpers, no framework) -------------------------
-
-  private render(): void {
-    this.root.replaceChildren();
-    this.root.append(
-      this.header(),
-      this.disclosure(),
-      this.keySection(),
-      this.triggerSection(),
-      this.diagSection(),
-    );
+  private startEdit(t: Trigger): void {
+    this.editing = { isNew: false, draft: JSON.parse(JSON.stringify(t)) as Trigger };
+    this.render();
   }
 
-  /** Shows what the last glasses launch recorded (see diag.ts). */
-  private diagSection(): HTMLElement {
-    const s = section('Glasses diagnostics');
+  private editorView(state: EditState): HTMLElement {
+    const d = state.draft;
+    const s = section(state.isNew ? 'Add trigger' : 'Edit trigger');
+
+    // Kind radio.
     s.append(
+      kindRadio(d.kind, (k) => {
+        d.kind = k;
+        if (k === 'raw' && !d.raw) d.raw = emptyRawConfig();
+        this.render();
+      }),
+    );
+
+    // Common fields.
+    const labelField = field('Label (shown on glasses)', d.label, (v) => (d.label = v));
+    labelField.querySelector('input')?.setAttribute('maxlength', '20');
+    s.append(labelField);
+
+    const confirmRow = el('label', 'fire-toggle');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = d.confirm;
+    cb.onchange = () => (d.confirm = cb.checked);
+    confirmRow.append(cb, document.createTextNode(' Require confirm on glasses (for destructive triggers)'));
+    s.append(confirmRow);
+
+    // Kind-specific fields.
+    if (d.kind === 'ifttt') s.append(this.iftttFields(d));
+    else s.append(this.rawFields(d));
+
+    // Actions + test result.
+    const result = el('div', 'fire-testresult');
+    const err = el('p', 'fire-error');
+    const actions = el('div', 'fire-row');
+    actions.append(
+      button('Test fire', () => void this.runTest(d, result), 'primary'),
+      button('Save', () => void this.save(state, err), 'primary'),
+      button('Cancel', () => this.cancel()),
+    );
+    s.append(actions, err, result);
+    return s;
+  }
+
+  private iftttFields(d: Trigger): HTMLElement {
+    const wrap = el('div', 'fire-fields');
+    wrap.append(field('IFTTT event name', d.event ?? '', (v) => (d.event = v.trim())));
+    const vals = el('div', 'fire-values');
+    (['value1', 'value2', 'value3'] as const).forEach((k) => {
+      vals.append(
+        field(k, d.values?.[k] ?? '', (v) => {
+          const values = { ...(d.values ?? {}) };
+          if (v.trim()) values[k] = v;
+          else delete values[k];
+          d.values = Object.keys(values).length ? values : undefined;
+        }),
+      );
+    });
+    wrap.append(details('Values (optional)', vals));
+    return wrap;
+  }
+
+  private rawFields(d: Trigger): HTMLElement {
+    const raw = (d.raw ??= emptyRawConfig());
+    const wrap = el('div', 'fire-fields');
+
+    // Method + URL on one row.
+    const methodWrap = el('label', 'fire-field fire-method');
+    methodWrap.append(el('span', 'fire-label', 'Method'));
+    const sel = document.createElement('select');
+    sel.className = 'fire-input';
+    for (const m of HTTP_METHODS) {
+      const opt = document.createElement('option');
+      opt.value = m;
+      opt.textContent = m;
+      if (m === raw.method) opt.selected = true;
+      sel.append(opt);
+    }
+    sel.onchange = () => (raw.method = sel.value as HttpMethod);
+    methodWrap.append(sel);
+
+    const urlField = field('URL', raw.url, (v) => (raw.url = v.trim()));
+    urlField.querySelector('input')?.setAttribute('inputmode', 'url');
+
+    const row = el('div', 'fire-row fire-method-row');
+    row.append(methodWrap, urlField);
+    wrap.append(row);
+
+    // Headers.
+    wrap.append(this.headerEditor(raw));
+
+    // Body.
+    const bodyWrap = el('label', 'fire-field');
+    bodyWrap.append(el('span', 'fire-label', 'Body'));
+    const ta = document.createElement('textarea');
+    ta.className = 'fire-input fire-textarea';
+    ta.rows = 4;
+    ta.value = raw.body;
+    ta.placeholder = '{ "example": true }';
+    ta.spellcheck = false;
+    ta.onchange = () => (raw.body = ta.value);
+    bodyWrap.append(ta);
+    wrap.append(bodyWrap);
+
+    wrap.append(
       el(
         'p',
         'fire-help',
-        'Open the app from the glasses menu, then come back here and tap Refresh ' +
-          'to see what the glasses launch recorded.',
+        'Runs in the phone WebView, so CORS applies: the status/body are readable ' +
+          'only if the endpoint sends Access-Control-Allow-Origin, and custom ' +
+          'headers/methods are preflighted.',
       ),
+    );
+    return wrap;
+  }
+
+  private headerEditor(raw: NonNullable<Trigger['raw']>): HTMLElement {
+    const wrap = el('div', 'fire-headers');
+    wrap.append(el('span', 'fire-label', 'Headers'));
+    const rebuild = () => {
+      this.render(); // simplest: re-render editor to reflect add/remove
+    };
+    raw.headers.forEach((h, i) => {
+      const row = el('div', 'fire-row fire-header-row');
+      const nameIn = textInput(h.name, 'Header', (v) => (raw.headers[i].name = v));
+      const valIn = textInput(h.value, 'Value', (v) => (raw.headers[i].value = v));
+      const del = button('✕', () => {
+        raw.headers.splice(i, 1);
+        rebuild();
+      }, 'danger');
+      row.append(nameIn, valIn, del);
+      wrap.append(row);
+    });
+    wrap.append(
+      button('+ Add header', () => {
+        raw.headers.push({ name: '', value: '' });
+        rebuild();
+      }),
+    );
+    return wrap;
+  }
+
+  private async runTest(d: Trigger, resultEl: HTMLElement): Promise<void> {
+    resultEl.replaceChildren(el('p', 'fire-help', 'Sending…'));
+    const r: TestResult = await test(d, this.config.key);
+    resultEl.replaceChildren(renderTestResult(r));
+  }
+
+  private async save(state: EditState, errEl: HTMLElement): Promise<void> {
+    const d = state.draft;
+    d.label = clampLabel(d.label);
+    const error = validate(d);
+    if (error) {
+      errEl.textContent = error;
+      return;
+    }
+    // Drop the fields that don't belong to the chosen kind.
+    if (d.kind === 'ifttt') delete d.raw;
+    else {
+      delete d.event;
+      delete d.values;
+    }
+    const existing = this.config.triggers.findIndex((t) => t.id === d.id);
+    if (existing >= 0) this.config.triggers[existing] = d;
+    else this.config.triggers.push(d);
+    await this.persist();
+    this.editing = null;
+    this.render();
+  }
+
+  private cancel(): void {
+    this.editing = null;
+    this.render();
+  }
+
+  // --- Diagnostics ---------------------------------------------------------
+
+  private diagSection(): HTMLElement {
+    const s = section('Glasses diagnostics');
+    s.append(
+      el('p', 'fire-help', 'Open Fire on the glasses, then Refresh to see what it recorded.'),
     );
     const pre = el('pre', 'fire-diag');
     const row = el('div', 'fire-row');
@@ -168,15 +413,6 @@ export class SettingsApp {
     s.append(row, pre);
     void this.loadDiag(pre);
     return s;
-  }
-
-  private async copyDiag(pre: HTMLElement, btn: HTMLButtonElement): Promise<void> {
-    const ok = await copyText(pre.textContent ?? '');
-    const prev = btn.textContent;
-    btn.textContent = ok ? 'Copied!' : 'Copy failed';
-    setTimeout(() => {
-      btn.textContent = prev;
-    }, 1200);
   }
 
   private async loadDiag(pre: HTMLElement): Promise<void> {
@@ -192,128 +428,135 @@ export class SettingsApp {
     }
   }
 
+  private async copyDiag(pre: HTMLElement, btn: HTMLButtonElement): Promise<void> {
+    const ok = await copyText(pre.textContent ?? '');
+    const prev = btn.textContent;
+    btn.textContent = ok ? 'Copied!' : 'Copy failed';
+    setTimeout(() => {
+      btn.textContent = prev;
+    }, 1200);
+  }
+
   private async clearDiagnostics(pre: HTMLElement): Promise<void> {
     await clearDiag(this.bridge);
     pre.textContent = 'Cleared.';
   }
-
-  private header(): HTMLElement {
-    const h = el('header', 'fire-header');
-    h.append(el('h1', 'fire-title', 'Fire'), el('p', 'fire-tagline', 'Fire your webhooks from your glasses.'));
-    injectStyleOnce();
-    return h;
-  }
-
-  private disclosure(): HTMLElement {
-    const box = el('div', 'fire-disclosure');
-    box.append(
-      el('strong', '', 'Before you add your key'),
-      el(
-        'p',
-        '',
-        'Your IFTTT Webhooks key identifies your IFTTT account. Anyone who has it ' +
-          'can trigger any applet on that account. Fire stores it only on this phone ' +
-          '(in the Even App), never on the glasses and never on any server.',
-      ),
-    );
-    return box;
-  }
-
-  private keySection(): HTMLElement {
-    const s = section('Webhooks key');
-    if (this.config.key && !this.editingKey) {
-      const row = el('div', 'fire-row');
-      row.append(el('code', 'fire-mask', maskKey(this.config.key)));
-      const replace = button('Replace', () => {
-        this.editingKey = true;
-        this.render();
-      });
-      const clear = button('Clear', () => void this.clearKey(), 'danger');
-      row.append(replace, clear);
-      s.append(row);
-    } else {
-      const input = document.createElement('input');
-      input.type = 'password';
-      input.autocomplete = 'off';
-      input.spellcheck = false;
-      input.placeholder = 'Paste your Webhooks key';
-      input.className = 'fire-input';
-      const row = el('div', 'fire-row');
-      const save = button('Save', () => void this.saveKey(input.value), 'primary');
-      row.append(input, save);
-      s.append(row);
-      const help = el('p', 'fire-help');
-      const a = document.createElement('a');
-      a.href = 'https://ifttt.com/maker_webhooks/settings';
-      a.target = '_blank';
-      a.rel = 'noopener noreferrer';
-      a.textContent = 'ifttt.com/maker_webhooks/settings';
-      help.append(document.createTextNode('Get your key at '), a);
-      s.append(help);
-    }
-    return s;
-  }
-
-  private triggerSection(): HTMLElement {
-    const s = section('Triggers');
-    const list = this.ordered();
-    if (list.length === 0) {
-      s.append(el('p', 'fire-help', 'No triggers yet. Add one below.'));
-    }
-    list.forEach((t, i) => s.append(this.triggerCard(t, i, list.length)));
-
-    const add = button(
-      this.config.triggers.length >= MAX_TRIGGERS ? `Max ${MAX_TRIGGERS} reached` : '+ Add trigger',
-      () => void this.addTrigger(),
-      'primary',
-    );
-    if (this.config.triggers.length >= MAX_TRIGGERS) add.setAttribute('disabled', 'true');
-    s.append(add);
-    return s;
-  }
-
-  private triggerCard(t: Trigger, index: number, count: number): HTMLElement {
-    const card = el('div', 'fire-card');
-
-    const labelIn = field('Label (shown on glasses)', t.label, (v) => this.updateTrigger(t.id, { label: v }));
-    labelIn.querySelector('input')?.setAttribute('maxlength', '20');
-    const eventIn = field('IFTTT event name', t.event, (v) => this.updateTrigger(t.id, { event: v.trim() }));
-
-    card.append(labelIn, eventIn);
-
-    // Optional value1..3 presets.
-    const vals = el('div', 'fire-values');
-    (['value1', 'value2', 'value3'] as const).forEach((k) => {
-      vals.append(field(k, t.values?.[k] ?? '', (v) => this.setValue(t.id, k, v)));
-    });
-    card.append(details('Values (optional)', vals));
-
-    // Confirm toggle.
-    const confirmRow = el('label', 'fire-toggle');
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.checked = t.confirm;
-    cb.onchange = () => void this.updateTrigger(t.id, { confirm: cb.checked });
-    confirmRow.append(cb, document.createTextNode(' Require confirm on glasses (for destructive triggers)'));
-    card.append(confirmRow);
-
-    // Actions: test + reorder + delete.
-    const actions = el('div', 'fire-row');
-    const status = el('span', 'fire-status');
-    actions.append(
-      button('Test fire', () => void this.testFire(t.id, status), 'primary'),
-      button('↑', () => void this.move(t.id, -1), index === 0 ? 'disabled' : ''),
-      button('↓', () => void this.move(t.id, 1), index === count - 1 ? 'disabled' : ''),
-      button('Delete', () => void this.deleteTrigger(t.id), 'danger'),
-    );
-    card.append(actions, status);
-    return card;
-  }
 }
 
-// --- Tiny DOM helpers ------------------------------------------------------
+// --- Pure helpers ----------------------------------------------------------
 
-/** Copy text to the clipboard, with a fallback for WebViews lacking the API. */
+function validate(d: Trigger): string | null {
+  if (!d.label.trim()) return 'Label is required.';
+  if (d.kind === 'ifttt') {
+    if (!d.event?.trim()) return 'IFTTT event name is required.';
+  } else {
+    if (!d.raw?.url.trim()) return 'URL is required.';
+    try {
+      // eslint-disable-next-line no-new
+      new URL(d.raw.url.trim());
+    } catch {
+      return 'URL is not valid (include https://).';
+    }
+  }
+  return null;
+}
+
+function renderTestResult(r: TestResult): HTMLElement {
+  const box = el('div', 'fire-result');
+  if (r.error) {
+    box.append(el('div', 'fire-result-status bad', 'Failed'), el('pre', 'fire-diag', r.error));
+    return box;
+  }
+  if (r.status != null) {
+    const ok = r.ok;
+    box.append(el('div', `fire-result-status ${ok ? 'good' : 'bad'}`, `${r.status} ${r.statusText ?? ''}`.trim()));
+    box.append(el('pre', 'fire-diag', r.body && r.body.length ? r.body : '(empty response body)'));
+  } else {
+    box.append(el('div', 'fire-result-status good', 'Sent'));
+    if (r.note) box.append(el('p', 'fire-help', r.note));
+  }
+  return box;
+}
+
+function kindRadio(current: TriggerKind, onChange: (k: TriggerKind) => void): HTMLElement {
+  const wrap = el('div', 'fire-radios');
+  const opts: Array<[TriggerKind, string]> = [
+    ['ifttt', 'IFTTT'],
+    ['raw', 'Raw HTTP'],
+  ];
+  for (const [value, label] of opts) {
+    const l = el('label', `fire-radio ${current === value ? 'sel' : ''}`);
+    const r = document.createElement('input');
+    r.type = 'radio';
+    r.name = 'fire-kind';
+    r.checked = current === value;
+    r.onchange = () => onChange(value);
+    l.append(r, document.createTextNode(' ' + label));
+    wrap.append(l);
+  }
+  return wrap;
+}
+
+function badge(kind: TriggerKind): HTMLElement {
+  return el('span', `fire-badge ${kind}`, kind === 'raw' ? 'Raw' : 'IFTTT');
+}
+
+function el(tag: string, className = '', text?: string): HTMLElement {
+  const e = document.createElement(tag);
+  if (className) e.className = className;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+function cell(child: HTMLElement): HTMLElement {
+  const td = document.createElement('td');
+  td.append(child);
+  return td;
+}
+
+function section(title: string): HTMLElement {
+  const s = el('section', 'fire-section');
+  s.append(el('h2', 'fire-h2', title));
+  return s;
+}
+
+function button(label: string, onClick: (e: MouseEvent) => void, variant = ''): HTMLButtonElement {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.textContent = label;
+  b.className = `fire-btn ${variant}`.trim();
+  b.onclick = onClick;
+  return b;
+}
+
+function textInput(value: string, placeholder: string, onCommit: (v: string) => void): HTMLInputElement {
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'fire-input';
+  input.value = value;
+  input.placeholder = placeholder;
+  input.autocomplete = 'off';
+  input.spellcheck = false;
+  input.onchange = () => onCommit(input.value);
+  return input;
+}
+
+function field(label: string, value: string, onCommit: (v: string) => void): HTMLElement {
+  const wrap = el('label', 'fire-field');
+  wrap.append(el('span', 'fire-label', label));
+  wrap.append(textInput(value, '', onCommit));
+  return wrap;
+}
+
+function details(summary: string, body: HTMLElement): HTMLElement {
+  const d = document.createElement('details');
+  d.className = 'fire-details';
+  const s = document.createElement('summary');
+  s.textContent = summary;
+  d.append(s, body);
+  return d;
+}
+
 async function copyText(text: string): Promise<boolean> {
   try {
     if (navigator.clipboard?.writeText) {
@@ -321,7 +564,7 @@ async function copyText(text: string): Promise<boolean> {
       return true;
     }
   } catch {
-    /* fall through to the execCommand path */
+    /* fall through */
   }
   try {
     const ta = document.createElement('textarea');
@@ -339,52 +582,6 @@ async function copyText(text: string): Promise<boolean> {
   }
 }
 
-function el(tag: string, className = '', text?: string): HTMLElement {
-  const e = document.createElement(tag);
-  if (className) e.className = className;
-  if (text !== undefined) e.textContent = text;
-  return e;
-}
-
-function section(title: string): HTMLElement {
-  const s = el('section', 'fire-section');
-  s.append(el('h2', 'fire-h2', title));
-  return s;
-}
-
-function button(label: string, onClick: (e: MouseEvent) => void, variant = ''): HTMLButtonElement {
-  const b = document.createElement('button');
-  b.type = 'button';
-  b.textContent = label;
-  b.className = `fire-btn ${variant}`.trim();
-  if (variant === 'disabled') b.disabled = true;
-  b.onclick = onClick;
-  return b;
-}
-
-function field(label: string, value: string, onCommit: (v: string) => void): HTMLElement {
-  const wrap = el('label', 'fire-field');
-  wrap.append(el('span', 'fire-label', label));
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.className = 'fire-input';
-  input.value = value;
-  input.autocomplete = 'off';
-  input.spellcheck = false;
-  input.onchange = () => onCommit(input.value);
-  wrap.append(input);
-  return wrap;
-}
-
-function details(summary: string, body: HTMLElement): HTMLElement {
-  const d = document.createElement('details');
-  d.className = 'fire-details';
-  const s = document.createElement('summary');
-  s.textContent = summary;
-  d.append(s, body);
-  return d;
-}
-
 let styleInjected = false;
 function injectStyleOnce(): void {
   if (styleInjected) return;
@@ -398,24 +595,48 @@ function injectStyleOnce(): void {
   .fire-disclosure p { margin: 6px 0 0; color: #d9c9a8; font-size: 13px; }
   .fire-section { margin: 22px 0; }
   .fire-h2 { font-size: 15px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin: 0 0 10px; }
-  .fire-card { border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 12px; background: #10130f; }
   .fire-field { display: block; margin-bottom: 10px; }
   .fire-label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
   .fire-input { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--field); color: var(--fg); font-size: 15px; }
+  .fire-textarea { font-family: ui-monospace, monospace; resize: vertical; }
   .fire-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
   .fire-row .fire-input { flex: 1 1 180px; }
   .fire-btn { padding: 9px 14px; border-radius: 8px; border: 1px solid var(--line); background: #1a201b; color: var(--fg); font-size: 14px; cursor: pointer; }
   .fire-btn.primary { background: var(--accent); color: #04210a; border-color: var(--accent); font-weight: 600; }
   .fire-btn.danger { color: var(--danger); border-color: #3a1f1f; }
-  .fire-btn:disabled, .fire-btn.disabled { opacity: 0.4; cursor: default; }
+  .fire-btn:disabled { opacity: 0.4; cursor: default; }
   .fire-mask { flex: 1 1 auto; font-family: ui-monospace, monospace; letter-spacing: 1px; color: var(--muted); }
-  .fire-toggle { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--fg); margin-top: 6px; }
+  .fire-toggle { display: flex; gap: 8px; align-items: center; font-size: 13px; margin: 8px 0; }
   .fire-values .fire-field { margin-bottom: 6px; }
   .fire-details { margin: 8px 0; }
   .fire-details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
   .fire-help { color: var(--muted); font-size: 13px; }
   .fire-help a { color: var(--accent); }
-  .fire-status { font-size: 13px; color: var(--muted); min-height: 18px; }
+  .fire-error { color: var(--danger); font-size: 13px; min-height: 16px; margin: 4px 0 0; }
+  /* Table */
+  .fire-table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+  .fire-table th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); padding: 4px 6px; border-bottom: 1px solid var(--line); }
+  .fire-table td { padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  .fire-idx { color: var(--muted); width: 1.5em; }
+  .fire-name { font-weight: 600; word-break: break-word; }
+  .fire-rowactions { display: flex; gap: 4px; justify-content: flex-end; }
+  .fire-rowactions .fire-btn { padding: 6px 10px; font-size: 13px; }
+  .fire-badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+  .fire-badge.raw { color: #7cc0fc; border-color: #23405a; }
+  .fire-badge.ifttt { color: var(--accent); border-color: #26402a; }
+  /* Radios */
+  .fire-radios { display: flex; gap: 8px; margin-bottom: 12px; }
+  .fire-radio { flex: 1 1 0; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; font-size: 14px; }
+  .fire-radio.sel { border-color: var(--accent); background: #10160f; color: var(--accent); }
+  .fire-method { flex: 0 0 34%; margin-bottom: 0; }
+  .fire-method-row { align-items: flex-end; }
+  .fire-method-row .fire-field { flex: 1 1 60%; margin-bottom: 0; }
+  .fire-header-row .fire-input { flex: 1 1 40%; }
+  .fire-headers { margin: 10px 0; }
+  /* Test result */
+  .fire-result-status { font-weight: 700; padding: 6px 0; }
+  .fire-result-status.good { color: var(--accent); }
+  .fire-result-status.bad { color: var(--danger); }
   .fire-diag { background: #0b0e0c; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-top: 8px; font: 12px/1.4 ui-monospace, monospace; color: #b9d9b9; white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow: auto; }
   `;
   const style = document.createElement('style');

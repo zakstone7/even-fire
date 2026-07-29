@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.0
+
+- Triggers are now shown in a reorderable table (up/down), with Edit and Delete.
+- Adding a trigger starts with an IFTTT / Raw choice:
+  - IFTTT: the existing event + value1..3 behavior.
+  - Raw: an arbitrary HTTP request (method, URL, headers, body). "Test fire"
+    shows the status code and a truncated (<=500 char) response body — subject
+    to CORS: the response is readable only when the endpoint sends
+    Access-Control-Allow-Origin, and custom headers/methods are preflighted.
+- Config migrated to v2 (adds trigger `kind`); v1 triggers become IFTTT.
+- Raw triggers need no IFTTT key; the glasses key-missing screen now only
+  appears when firing an IFTTT trigger without a key.
+
 ## 0.1.9
 
 - Show the "Fire" title on the message screens too (Sending / Sent / No
