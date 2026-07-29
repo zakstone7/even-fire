@@ -33,9 +33,9 @@ paste into Cloudflare's web dashboard. ~5 minutes, start to finish.
 1. **Make a free Cloudflare account** at <https://dash.cloudflare.com/sign-up>
    (no card needed).
 2. **Create a Worker.** In the dashboard sidebar, open **Build → Compute
-   (Workers)** (older accounts show it as **Workers & Pages**), then
-   **Create → Workers → Create Worker**. Give it a name (e.g. `fire-relay` —
-   this becomes your URL), then **Deploy** the starter, then **Edit code**.
+   (Workers)** (older accounts show it as **Workers & Pages**). Click **Create
+   application**, then choose the **Hello World** starter. Give it a name (e.g.
+   `fire-relay` — this becomes your URL), then **Deploy**, then **Edit code**.
 3. **Paste the relay.** Select all the starter code in the editor and delete it,
    then paste the entire contents of [`src/worker.mjs`](src/worker.mjs) (open it
    on GitHub, hit "Copy raw file"). Click **Deploy**.
