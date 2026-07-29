@@ -17,7 +17,48 @@ requests or secrets.
 - ❌ Can't reach your LAN (`192.168.x`, `localhost`, …) — those are blocked and
   should be fired **directly from the phone** in the app (per-trigger "use relay = off").
 
-## Deploy (about 2 minutes)
+## Cost
+
+This runs on **Cloudflare Workers' free tier**: 100,000 requests/day, no credit
+card, and **no egress charges**. A personal relay never comes close to the
+limit, so in practice it is free. That is the cheapest option there is — a relay
+is just a fetch-proxy, so anything with a free serverless tier works, but
+Cloudflare needs no card and the deploy below needs no tools.
+
+## Deploy — easiest way (no CLI, works from your phone)
+
+You don't need Node, `wrangler`, or a terminal. The whole thing is one file you
+paste into Cloudflare's web dashboard. ~5 minutes, start to finish.
+
+1. **Make a free Cloudflare account** at <https://dash.cloudflare.com/sign-up>
+   (no card needed).
+2. **Create a Worker.** In the dashboard: **Workers & Pages → Create → Workers →
+   Create Worker**. Give it a name (e.g. `fire-relay` — this becomes your URL),
+   then **Deploy** the starter, then **Edit code**.
+3. **Paste the relay.** Select all the starter code in the editor and delete it,
+   then paste the entire contents of [`src/worker.mjs`](src/worker.mjs) (open it
+   on GitHub, hit "Copy raw file"). Click **Deploy**.
+4. **Set your secret.** Leave the editor. On the Worker's page go to **Settings →
+   Variables and Secrets → Add**, type **`RELAY_SECRET`** as the name, pick a
+   long random value, choose **Encrypt** (a "Secret", not plaintext), and
+   **Deploy**. Use any password generator, or your phone's password manager
+   "suggest strong password" — 30+ characters. Save this value; you'll paste it
+   into the app.
+5. **Grab your URL.** It's shown on the Worker's page:
+   `https://fire-relay.<your-subdomain>.workers.dev`. Tap it and append
+   `/health` — you should see `{"ok":true}`. That confirms it's live.
+
+In the Fire app → phone settings → **Relay**:
+
+- **Relay URL** = your Worker URL (e.g. `https://fire-relay.you.workers.dev`)
+- **Relay secret** = the `RELAY_SECRET` you chose in step 4
+
+Then set **use relay = on** per Raw trigger you want routed through it. Done.
+
+> Updating later: to pull in a newer `worker.mjs`, repeat step 3 (paste + Deploy).
+> Your secret and URL stay put.
+
+## Deploy — with the CLI (if you already have Node)
 
 ```bash
 cd relay
@@ -28,14 +69,7 @@ npx wrangler secret put RELAY_SECRET
 npm run deploy
 ```
 
-Wrangler prints your Worker URL, e.g. `https://fire-relay.you.workers.dev`.
-
-In the Fire app → phone settings → **Relay**:
-
-- **Relay URL** = that Worker URL
-- **Relay secret** = the `RELAY_SECRET` you set
-
-Then set **use relay = on** per Raw trigger you want routed through it.
+Wrangler prints your Worker URL, then configure the app exactly as above.
 
 ## API
 
@@ -54,7 +88,12 @@ GET /health       { ok: true }
 The incoming `Authorization` (your relay secret) is **never** forwarded upstream —
 the upstream request's headers come only from the `headers` you send.
 
-## Config (optional `wrangler.toml` vars)
+## Config (all optional)
+
+Everything below has a sane default — you never need to set any of these to get
+going. To change one, add it as a plaintext **Variable** in the dashboard
+(**Settings → Variables and Secrets**, same place as the secret), or as a `[vars]`
+entry in `wrangler.toml` if you use the CLI.
 
 | var | default | meaning |
 | --- | --- | --- |
@@ -64,13 +103,11 @@ the upstream request's headers come only from the `headers` you send.
 | `TIMEOUT_MS` | `10000` | upstream timeout |
 | `ALLOW_PRIVATE` | `false` | allow private/reserved hosts (leave off) |
 
+`RELAY_SECRET` is the one thing you *must* set, and it's a **Secret** (encrypted),
+not a plaintext Variable.
+
 ## Test
 
 ```bash
 npm test        # node --test, no Cloudflare account needed
 ```
-
-## Cost
-
-Cloudflare Workers bill per request with **no egress charges**; a personal relay
-sits comfortably in the free tier.
