@@ -37,8 +37,8 @@ const SUPPORT_EMAIL = 'zakstone7@gmail.com';
 /** Optional "Buy me a coffee" tip link. Replace with your own page URL. */
 const COFFEE_URL = 'https://www.buymeacoffee.com/zakstone7';
 
-/** Where to get / deploy the self-hosted relay. */
-const RELAY_REPO_URL = 'https://github.com/zakstone7/even-fire-relay';
+/** Where to get / deploy the self-hosted relay (the relay/ folder in the repo). */
+const RELAY_REPO_URL = 'https://github.com/zakstone7/even-fire/tree/main/relay';
 
 /** Private/reserved URL → must fire direct (relay can't reach a LAN). */
 function isLocalUrl(url: string): boolean {
@@ -489,7 +489,7 @@ export class SettingsApp {
     repo.href = RELAY_REPO_URL;
     repo.target = '_blank';
     repo.rel = 'noopener noreferrer';
-    repo.textContent = 'github.com/zakstone7/even-fire-relay';
+    repo.textContent = 'the relay setup guide';
     help.append(repo, document.createTextNode(', then enable it per trigger. Leave blank to fire everything directly.'));
     s.append(help);
     const relay = this.config.relay ?? { url: '', secret: '' };

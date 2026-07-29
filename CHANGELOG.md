@@ -2,10 +2,11 @@
 
 ## 0.3.2
 
-- The self-hosted relay now lives in its own repo,
-  [even-fire-relay](https://github.com/zakstone7/even-fire-relay). The in-app
-  Relay help links straight to it, and the relay source/tests moved out of this
-  repo (this app is unchanged otherwise).
+- The self-hosted relay lives in [`relay/`](relay/) again (a separate repo
+  bought nothing — Cloudflare can't import a repo). The Worker is a single
+  `_worker.js` you download and upload straight to the Cloudflare dashboard
+  ("Upload Static Files"), no CLI needed; the relay README has a download link
+  and step-by-step guide. The in-app Relay help links to that guide.
 
 ## 0.3.1
 
