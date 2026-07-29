@@ -119,14 +119,17 @@ index.html → src/     Web entry (built to dist/index.html)
 build.mjs             esbuild bundler → dist/ (index.html + app.js)
 src/
   main.ts             Bridge init; always drive glasses + render phone settings
-  types.ts            FireConfig / Trigger (v2) data model + limits
-  config.ts           Atomic load/save + v1→v2 migration through SDK storage
-  execute.ts          send() (glasses, fire-and-forget) + test() (phone, detailed)
+  types.ts            FireConfig / Trigger (v3) data model + limits
+  config.ts           Atomic load/save + v1→v2→v3 migration through SDK storage
+  execute.ts          execute() — routes a trigger direct or via the relay
+  history.ts          On-device recent-calls history (read/record/clear)
   ifttt.ts            buildTriggerUrl() — the IFTTT Webhooks URL
   glasses.ts          Glasses UI state machine (OS list/text containers)
-  settings.ts         Phone settings page (key, trigger table, editor, test)
+  settings.ts         Phone settings page (key, trigger table, editor, relay,
+                      history, test, support)
   diag.ts             Append-only glasses-launch diagnostics (read on the phone)
   util.ts             uuid, label clamp, key masking
+relay/                Optional self-hosted Cloudflare Worker relay (see below)
 assets/               Monochrome icon foreground + background (+ generator)
 tools/genicons.py     Regenerates the greyscale icons (pure stdlib)
 ```
@@ -148,19 +151,27 @@ Each trigger is one of two kinds:
 methods are preflighted (and blocked entirely if the endpoint doesn't answer).
 The phone "Test fire" shows the status + a truncated (≤500 char) body when
 readable, or a clear CORS/error message otherwise. A universal curl would need a
-proxy (a backend). On the glasses a Raw trigger shows Sent / No connection only.
+proxy (a backend) — which is exactly what the optional
+[self-hosted relay](#relay-self-hosted) provides: enable it per trigger and the
+request is proxied server-side, so the real status code and body come back for
+*any* host (and the glasses show "Fired 200" / "Failed 401" instead of just
+"Sent"). Without a relay, a Raw trigger on the glasses shows Sent / No
+connection only.
 
 ## Data model
 
 Stored as one JSON blob under `fire.config.v1` (atomic reads/writes). Always
 branch on `version`; never assume shape (see `src/config.ts`). v1 triggers
-(IFTTT-only, no `kind`) migrate to `kind: 'ifttt'`.
+(IFTTT-only, no `kind`) migrate to `kind: 'ifttt'`; v2 configs migrate to v3
+with `relay` unset and `useRelay` false.
 
 ```ts
 interface FireConfig {
-  version: 2;
+  version: 3;
   key: string | null;                 // IFTTT Webhooks key
   triggers: Trigger[];                // capped at 12
+  relay?: { url: string; secret: string };  // optional self-hosted relay
+  historyLimit?: number;              // recent-calls kept on-device (0..100)
 }
 interface Trigger {
   id: string;                         // uuid, stable across renames
@@ -168,6 +179,7 @@ interface Trigger {
   kind: 'ifttt' | 'raw';
   confirm: boolean;                   // two-step tap before firing
   order: number;
+  useRelay?: boolean;                 // route through the relay (default false)
   // kind === 'ifttt'
   event?: string;                     // IFTTT event name
   values?: { value1?: string; value2?: string; value3?: string };
@@ -181,6 +193,10 @@ interface Trigger {
 }
 ```
 
+Recent-calls **history** is stored separately under `fire.history.v1`
+(on-device only, never sent anywhere), capped by `historyLimit`
+(default 25, max 100).
+
 ## Glasses screens
 
 | Screen | When | Input |
@@ -188,7 +204,8 @@ interface Trigger {
 | **List** (root) | ≥1 trigger | scroll = highlight, tap = select, double-tap = exit dialog |
 | **Confirm** | selected trigger has `confirm: true` | 2-item list `Cancel` (default) / `Fire …` |
 | **Sending** | during the request | — |
-| **Sent** | request reached the endpoint | tap or ~2s auto-dismiss → list |
+| **Sent** | request reached the endpoint (outcome opaque) | tap or ~2s auto-dismiss → list |
+| **Result** | relay returned a real status (e.g. "Fired 200" / "Failed 401") | tap or ~2s auto-dismiss → list |
 | **No connection** | transport failure (or Raw CORS block) | tap = retry, double-tap = back |
 | **Key missing** | firing an IFTTT trigger with no key set | points to the phone app |
 | **Empty** | no triggers | points to the phone app |
@@ -202,6 +219,37 @@ a list/text event with a missing `eventType` as a click and a missing index as 0
 apps).
 
 Repeat taps on the same trigger are debounced (~1.5s) to survive a bouncy pad.
+
+## Relay (self-hosted)
+
+The CORS constraint above means a Raw trigger fired directly can never see the
+real status or body of a cross-origin response, and custom methods/headers get
+preflighted. The **optional relay** removes that limit: a tiny stateless
+Cloudflare Worker you deploy to *your own* account makes the request
+server-side (where CORS doesn't apply) and returns the real result.
+
+- Deploy it in ~2 minutes and it's yours — no accounts, no billing, no request
+  logging. See [`relay/README.md`](relay/README.md).
+- In the app → phone settings → **Relay**, set the Worker **URL** and the
+  **secret** (`RELAY_SECRET`) you chose.
+- Enable **use relay** per Raw trigger you want proxied. With the relay on, the
+  phone test fire *and the glasses* show the real upstream status ("Fired 200" /
+  "Failed 401").
+- **Local endpoints stay direct.** A relay can't reach your LAN
+  (`192.168.x`, `localhost`, …), so those hosts are gated off the relay toggle
+  and fired straight from the phone. This is the local-endpoint use case: a Raw
+  trigger to a device on your network works from the phone with no relay.
+
+The relay authenticates with a single shared secret you set (`Authorization:
+Bearer`), enforces size/timeout caps and an SSRF guard (private/reserved/metadata
+IPs blocked), and never forwards your relay secret upstream. It has its own
+tests (`cd relay && npm test`, no Cloudflare account needed).
+
+## Support
+
+The phone settings include a **Contact support** button that opens your mail app
+with a prefilled message including recent diagnostics (a trivial, zero-backend
+ticket path). No data leaves the device unless you send the email.
 
 ## Build & run
 
