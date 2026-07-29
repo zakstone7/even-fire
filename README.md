@@ -83,7 +83,11 @@ confirmed / corrected several assumptions:
 - **Storage** is `bridge.setLocalStorage(key, value)` / `getLocalStorage(key)`,
   values are strings. ✓
 - **Launch source** values are exactly `'appMenu' | 'glassesMenu'`, pushed once
-  via `bridge.onLaunchSource(cb)`. ✓
+  via `bridge.onLaunchSource(cb)`. ✓ — but render is **not** gated on it: every
+  Even Hub app (per the official templates) creates its glasses page on boot
+  unconditionally, and none use `onLaunchSource`. Fire always drives the glasses
+  and also renders the phone settings; the launch source is only logged for
+  diagnostics.
 - **Exit** is `bridge.shutDownPageContainer(mode)` — `0` = exit immediately,
   `1` = pop the system foreground layer and let the user decide. Root
   double-tap uses `1`. ✓
@@ -112,7 +116,7 @@ app.json              Even Hub manifest (validated by `evenhub pack`)
 index.html → src/     Web entry (built to dist/index.html)
 build.mjs             esbuild bundler → dist/ (index.html + app.js)
 src/
-  main.ts             Bridge init + route by launch source
+  main.ts             Bridge init; always drive glasses + render phone settings
   types.ts            FireConfig / Trigger data model + limits
   config.ts           Atomic load/save + migration through SDK storage
   ifttt.ts            fire() — the CORS-safe request, two honest results

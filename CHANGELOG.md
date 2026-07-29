@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.5
+
+- Fix: the glasses never rendered. Fire only created the glasses page when it
+  detected a `glassesMenu` launch, but a beta/test build only ever launches as
+  `appMenu`, so the glasses page was never created — which also stopped the app
+  being recognized as a glasses app. Matching the official templates, Fire now
+  creates the glasses page on every launch (unconditionally) and renders the
+  phone settings as an additional surface. Editing triggers on the phone now
+  refreshes the glasses list live.
+
 ## 0.1.4
 
 - Fix: the diagnostics log was overwritten on every launch, so opening the phone

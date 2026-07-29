@@ -24,6 +24,7 @@ export class SettingsApp {
   constructor(
     private readonly bridge: EvenAppBridge,
     private config: FireConfig,
+    private readonly onChange?: () => void,
   ) {
     const el = document.getElementById('app');
     if (!el) throw new Error('#app root missing');
@@ -37,6 +38,7 @@ export class SettingsApp {
 
   private async persist(): Promise<void> {
     await saveConfig(this.bridge, this.config);
+    this.onChange?.();
   }
 
   private ordered(): Trigger[] {
