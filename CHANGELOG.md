@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.2
+
+- The self-hosted relay now lives in its own repo,
+  [even-fire-relay](https://github.com/zakstone7/even-fire-relay). The in-app
+  Relay help links straight to it, and the relay source/tests moved out of this
+  repo (this app is unchanged otherwise).
+
 ## 0.3.1
 
 - Add an optional "Buy me a coffee" tip button to the phone settings. Fire stays

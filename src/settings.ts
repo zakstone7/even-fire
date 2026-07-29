@@ -37,6 +37,9 @@ const SUPPORT_EMAIL = 'zakstone7@gmail.com';
 /** Optional "Buy me a coffee" tip link. Replace with your own page URL. */
 const COFFEE_URL = 'https://www.buymeacoffee.com/zakstone7';
 
+/** Where to get / deploy the self-hosted relay. */
+const RELAY_REPO_URL = 'https://github.com/zakstone7/even-fire-relay';
+
 /** Private/reserved URL → must fire direct (relay can't reach a LAN). */
 function isLocalUrl(url: string): boolean {
   try {
@@ -475,15 +478,20 @@ export class SettingsApp {
 
   private relaySection(): HTMLElement {
     const s = section('Relay (self-hosted)');
-    s.append(
-      el(
-        'p',
-        'fire-help',
-        'Optional. A relay you host on Cloudflare makes triggers show real responses ' +
-          '(status + body) for any host, bypassing CORS. Deploy it from relay/README.md, ' +
-          'then enable it per trigger. Leave blank to fire everything directly.',
-      ),
+    const help = el(
+      'p',
+      'fire-help',
+      'Optional. A relay you host on Cloudflare makes triggers show real responses ' +
+        '(status + body) for any host, bypassing CORS. Deploy it in a few minutes ' +
+        '(no CLI needed) from ',
     );
+    const repo = document.createElement('a');
+    repo.href = RELAY_REPO_URL;
+    repo.target = '_blank';
+    repo.rel = 'noopener noreferrer';
+    repo.textContent = 'github.com/zakstone7/even-fire-relay';
+    help.append(repo, document.createTextNode(', then enable it per trigger. Leave blank to fire everything directly.'));
+    s.append(help);
     const relay = this.config.relay ?? { url: '', secret: '' };
 
     const urlField = field('Relay URL', relay.url, (v) => void this.setRelayField('url', v));

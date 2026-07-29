@@ -129,7 +129,6 @@ src/
                       history, test, support)
   diag.ts             Append-only glasses-launch diagnostics (read on the phone)
   util.ts             uuid, label clamp, key masking
-relay/                Optional self-hosted Cloudflare Worker relay (see below)
 assets/               Monochrome icon foreground + background (+ generator)
 tools/genicons.py     Regenerates the greyscale icons (pure stdlib)
 ```
@@ -228,8 +227,10 @@ preflighted. The **optional relay** removes that limit: a tiny stateless
 Cloudflare Worker you deploy to *your own* account makes the request
 server-side (where CORS doesn't apply) and returns the real result.
 
-- Deploy it in ~2 minutes and it's yours — no accounts, no billing, no request
-  logging. See [`relay/README.md`](relay/README.md).
+- Deploy it in a few minutes and it's yours — no accounts, no billing, no
+  request logging, and no CLI required (copy-paste into the Cloudflare
+  dashboard). The relay lives in its own repo with a step-by-step guide:
+  **<https://github.com/zakstone7/even-fire-relay>**.
 - In the app → phone settings → **Relay**, set the Worker **URL** and the
   **secret** (`RELAY_SECRET`) you chose.
 - Enable **use relay** per Raw trigger you want proxied. With the relay on, the
@@ -242,8 +243,8 @@ server-side (where CORS doesn't apply) and returns the real result.
 
 The relay authenticates with a single shared secret you set (`Authorization:
 Bearer`), enforces size/timeout caps and an SSRF guard (private/reserved/metadata
-IPs blocked), and never forwards your relay secret upstream. It has its own
-tests (`cd relay && npm test`, no Cloudflare account needed).
+IPs blocked), and never forwards your relay secret upstream. Its source and tests
+live in the [even-fire-relay](https://github.com/zakstone7/even-fire-relay) repo.
 
 ## Support
 
