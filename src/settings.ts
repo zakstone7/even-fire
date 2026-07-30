@@ -572,12 +572,19 @@ export class SettingsApp {
       li.append(...nodes.map((n) => (typeof n === 'string' ? document.createTextNode(n) : n)));
       ol.append(li);
     };
+    // Open links via window.open (like the coffee / issue buttons) rather than
+    // relying on an <a target="_blank"> — the host app tends to route the latter
+    // to its in-app browser, while window.open more often hits the real browser.
     const link = (href: string, text: string): HTMLAnchorElement => {
       const a = document.createElement('a');
       a.href = href;
       a.target = '_blank';
       a.rel = 'noopener noreferrer';
       a.textContent = text;
+      a.onclick = (e) => {
+        e.preventDefault();
+        window.open(href, '_blank');
+      };
       return a;
     };
 
@@ -668,6 +675,12 @@ export class SettingsApp {
     openLink.target = '_blank';
     openLink.rel = 'noopener noreferrer';
     openLink.textContent = 'open _worker.js in your browser';
+    // Use window.open (like the coffee/issue buttons) — more likely to hit the
+    // real browser than an <a target="_blank">, which the app opens in-app.
+    openLink.onclick = (e) => {
+      e.preventDefault();
+      window.open(RAW_WORKER_URL, '_blank');
+    };
     status.append(openLink, document.createTextNode(' and use Share → Save to Files.'));
     status.style.display = '';
 

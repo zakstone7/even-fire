@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.8
+
+- Relay setup links (incl. "open _worker.js in your browser") now open via
+  window.open — the same call the coffee/issue buttons use — instead of an
+  `<a target="_blank">`, which the Even App routes to its in-app browser. This
+  is more likely to hand off to the real system browser, where you can Save to
+  Files. (The host app ultimately decides; there is no SDK API to force it.)
+
 ## 0.3.7
 
 - Fix: the relay "Save _worker.js" button could appear to do nothing — awaiting
