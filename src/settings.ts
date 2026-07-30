@@ -41,6 +41,11 @@ const COFFEE_URL = 'https://www.buymeacoffee.com/zakstone7';
 const RELAY_SETUP_URL =
   'https://github.com/zakstone7/even-fire/blob/HEAD/relay/README.md';
 
+/** Direct link to the relay Worker file — copy it and open in your own browser
+ *  to download _worker.js. HEAD = default branch. */
+const RAW_WORKER_URL =
+  'https://github.com/zakstone7/even-fire/raw/HEAD/relay/_worker.js';
+
 
 /** The relay Worker source, inlined at build time from relay/_worker.js (see
  *  build.mjs). Lets the app offer a one-click download of `_worker.js`. */
@@ -585,17 +590,23 @@ export class SettingsApp {
     };
 
     step('Create a free Cloudflare account at ', link('https://dash.cloudflare.com/sign-up', 'dash.cloudflare.com/sign-up'), ' (no card needed).');
-    step('In the dashboard: Build → Compute (Workers) → Create application → Hello World. Name it (e.g. fire-relay), Deploy, then Edit code.');
-    step('Tap “Copy Worker code” below. In the Cloudflare editor, select all the starter code, delete it, paste, and Deploy.');
+    step('Get the Worker file: tap “Copy download link” below, paste it into your phone browser (Safari/Chrome), and save _worker.js.');
+    step('In the dashboard: Build → Compute (Workers) → Create application → Upload Static Files. Name it (e.g. fire-relay), upload the _worker.js you saved, and Deploy.');
     step('On the Worker page: Settings → Variables and Secrets → Add. Name it RELAY_SECRET, value a long random string, choose Encrypt, and Deploy. Keep this value.');
     step('Open your Worker URL with /health added (e.g. https://fire-relay.<you>.workers.dev/health) — you should see {"ok":true}.');
     step('Come back here (← Back), paste the Worker URL + the secret into the Relay fields, then turn on “Route through relay” per trigger.');
     s.append(ol);
 
-    // Get the code onto Cloudflare. Copy is the reliable route in the WebView
-    // (a file download / external browser aren't available from inside the app),
-    // so the steps above use copy → paste into a Hello World Worker.
-    s.append(button('📋 Copy Worker code', (e) => void this.copyWorker(e.currentTarget as HTMLButtonElement), 'primary'));
+    // Two ways to get the Worker to Cloudflare. Copying the download link is the
+    // nicer default: paste it into your own browser to download _worker.js
+    // (the in-app browser can't save, but yours can), then Upload Static Files.
+    // Copying the code is the alternative — paste it into a Hello World Worker.
+    const getRow = el('div', 'fire-row');
+    getRow.append(
+      button('🔗 Copy download link', (e) => void this.copyLink(e.currentTarget as HTMLButtonElement), 'primary'),
+      button('📋 Copy Worker code', (e) => void this.copyWorker(e.currentTarget as HTMLButtonElement)),
+    );
+    s.append(getRow);
 
     const details = document.createElement('details');
     details.className = 'fire-details';
@@ -610,10 +621,10 @@ export class SettingsApp {
       el(
         'p',
         'fire-help',
-        'Tap Copy, then paste into the Hello World Worker (step 3) and Deploy. ' +
-          'If Copy ever fails, open “Show Worker code”, long-press, Select all, copy. ' +
-          '(Prefer uploading the file on a computer? The same code is _worker.js in ' +
-          'the guide.)',
+        '“Copy download link” gives you the URL to _worker.js — paste it into your ' +
+          'phone browser to save the file, then upload it (step 3). Prefer not to ' +
+          'download? “Copy Worker code” instead, and paste it into a Hello World ' +
+          'Worker (Create application → Hello World → Edit code).',
       ),
     );
 
@@ -624,6 +635,15 @@ export class SettingsApp {
 
     s.append(button('← Back', back));
     return s;
+  }
+
+  private async copyLink(btn: HTMLButtonElement): Promise<void> {
+    const ok = await copyText(RAW_WORKER_URL);
+    const prev = btn.textContent;
+    btn.textContent = ok ? 'Link copied! Paste in your browser' : 'Copy failed';
+    setTimeout(() => {
+      btn.textContent = prev;
+    }, 2200);
   }
 
   private async copyWorker(btn: HTMLButtonElement): Promise<void> {

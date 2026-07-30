@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.10
+
+- Relay setup: add a **Copy download link** button (the nicer default) that
+  copies the URL to `_worker.js`. Paste it into your own phone browser to
+  download the file — the in-app browser can't save, but yours can — then
+  Cloudflare → Upload Static Files. “Copy Worker code” (paste into a Hello World
+  Worker) remains as the alternative. Steps updated to match.
+
 ## 0.3.9
 
 - Relay setup simplified to the one method that works from inside the app:
