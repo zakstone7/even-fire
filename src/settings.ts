@@ -473,9 +473,7 @@ export class SettingsApp {
     row.append(cb, document.createTextNode(' Route through relay (real status/body for any host)'));
     wrap.append(row);
 
-    if (!configured) {
-      wrap.append(el('p', 'fire-help', 'Set up a relay in the Relay section below to enable this.'));
-    } else if (localUrl) {
+    if (configured && localUrl) {
       wrap.append(el('p', 'fire-help', 'Local address — fired directly from your phone (relays can’t reach a LAN).'));
     }
     return wrap;
