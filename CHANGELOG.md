@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.3.2
+
+- Support is now via GitHub Issues, not email: the settings have a **Report an
+  issue on GitHub** button (opens the repo's issue tracker) in place of the old
+  mailto "Contact support" flow.
+- New **📖 Setup instructions** button in the Relay settings that opens the
+  step-by-step relay guide, next to the Download `_worker.js` button.
+
+- The self-hosted relay lives in [`relay/`](relay/) again (a separate repo
+  bought nothing — Cloudflare can't import a repo). The Worker is a single
+  `_worker.js` you download and upload straight to the Cloudflare dashboard
+  ("Upload Static Files"), no CLI needed; the relay README has a download link
+  and step-by-step guide. The in-app Relay help links to that guide.
+- One-click **Download `_worker.js`** button in the phone Relay settings — the
+  Worker source is bundled at build time (from `relay/_worker.js`, single source
+  of truth), so it saves offline with a single tap. No GitHub round-trip needed.
+
+## 0.3.1
+
+- Add an optional "Buy me a coffee" tip button to the phone settings. Fire stays
+  free with no accounts or backend; there is no paid tier. Set `COFFEE_URL` in
+  `src/settings.ts` to your own page.
+
+## 0.3.0
+
+- Self-hosted relay support. Configure a relay (URL + secret) you host yourself
+  (see relay/) and enable it per trigger to get real responses (status + body)
+  for any host, bypassing the WebView's CORS limits. Local endpoints stay direct
+  (relays can't reach a LAN) and the toggle is gated off for them.
+- Glasses now show the real relayed status (e.g. "Fired 200" / "Failed 401")
+  instead of just "Sent" when a trigger uses the relay.
+- Recent-calls history, stored on-device only, with a configurable cap.
+- Contact-support button that prefills recent diagnostics.
+- Config migrated to v3 (adds relay, per-trigger useRelay, history limit).
+
 ## 0.2.2
 
 - Diagnostics: stop logging the raw host event payload now that tap handling is

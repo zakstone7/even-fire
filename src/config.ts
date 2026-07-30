@@ -14,12 +14,15 @@ import {
   STORAGE_KEY,
   MAX_TRIGGERS,
   HTTP_METHODS,
+  HISTORY_DEFAULT,
+  HISTORY_MAX,
   emptyConfig,
   emptyRawConfig,
   type FireConfig,
   type HttpMethod,
   type RawConfig,
   type RawHeader,
+  type RelayConfig,
   type Trigger,
   type TriggerKind,
 } from './types';
@@ -56,14 +59,15 @@ export function parseConfig(raw: string | null | undefined): FireConfig {
   if (typeof data !== 'object' || data === null) return emptyConfig();
   const obj = data as Record<string, unknown>;
 
-  // v1 (no kind) and v2 (with kind) both parse into the current shape via
-  // normalize(), which fills in kind: 'ifttt' for legacy triggers. Anything
-  // else falls back to empty.
-  if (obj.version === 1 || obj.version === CONFIG_VERSION) {
+  // v1 (no kind), v2 (kind), v3 (relay/useRelay/history) all parse into the
+  // current shape via normalize(), which fills in defaults for missing fields.
+  if (obj.version === 1 || obj.version === 2 || obj.version === CONFIG_VERSION) {
     return normalize({
       version: CONFIG_VERSION,
       key: typeof obj.key === 'string' ? obj.key : null,
       triggers: Array.isArray(obj.triggers) ? (obj.triggers as Trigger[]) : [],
+      relay: obj.relay as RelayConfig | undefined,
+      historyLimit: typeof obj.historyLimit === 'number' ? obj.historyLimit : undefined,
     });
   }
   return emptyConfig();
@@ -83,7 +87,22 @@ export function normalize(config: FireConfig): FireConfig {
     version: CONFIG_VERSION,
     key: config.key && config.key.trim() ? config.key.trim() : null,
     triggers,
+    relay: normalizeRelay(config.relay),
+    historyLimit: clampHistoryLimit(config.historyLimit),
   };
+}
+
+function normalizeRelay(relay: RelayConfig | undefined): RelayConfig | undefined {
+  if (!relay) return undefined;
+  const url = String(relay.url ?? '').trim();
+  const secret = String(relay.secret ?? '').trim();
+  if (!url && !secret) return undefined;
+  return { url, secret };
+}
+
+function clampHistoryLimit(n: number | undefined): number {
+  if (!Number.isFinite(n)) return HISTORY_DEFAULT;
+  return Math.max(0, Math.min(HISTORY_MAX, Math.round(n as number)));
 }
 
 function normalizeTrigger(t: Trigger): Trigger | null {
@@ -94,6 +113,7 @@ function normalizeTrigger(t: Trigger): Trigger | null {
     kind,
     confirm: Boolean(t.confirm),
     order: Number.isFinite(t.order) ? t.order : 0,
+    useRelay: Boolean(t.useRelay),
   };
 
   if (kind === 'raw') {

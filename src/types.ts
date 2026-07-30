@@ -8,9 +8,13 @@
  * v2 adds a trigger `kind`: 'ifttt' (fire an IFTTT webhook via value1..3) or
  * 'raw' (an arbitrary HTTP request — method, url, headers, body). v1 triggers
  * are migrated to kind 'ifttt'.
+ *
+ * v3 adds an optional self-hosted `relay` (url + secret) and a per-trigger
+ * `useRelay` flag, plus `historyLimit`. Older configs migrate with relay unset
+ * and useRelay false.
  */
 
-export const CONFIG_VERSION = 2 as const;
+export const CONFIG_VERSION = 3 as const;
 
 /** Storage key for the whole config blob. Bump the suffix on a breaking change. */
 export const STORAGE_KEY = 'fire.config.v1';
@@ -67,6 +71,16 @@ export interface Trigger {
 
   // --- kind === 'raw' ---
   raw?: RawConfig;
+
+  /** Route this trigger through the configured relay (default false). Local
+   *  endpoints stay direct (relays can't reach a LAN). */
+  useRelay?: boolean;
+}
+
+/** Self-hosted relay endpoint. Configured = url and secret both non-empty. */
+export interface RelayConfig {
+  url: string;
+  secret: string;
 }
 
 export interface FireConfig {
@@ -74,6 +88,32 @@ export interface FireConfig {
   /** IFTTT Webhooks key. `null` until the user sets it on the phone. */
   key: string | null;
   triggers: Trigger[];
+  /** Optional self-hosted relay. */
+  relay?: RelayConfig;
+  /** How many recent calls to keep in on-device history. */
+  historyLimit?: number;
+}
+
+// --- Recent-calls history (stored on-device only; never sent anywhere) ---
+
+export const HISTORY_KEY = 'fire.history.v1';
+export const HISTORY_DEFAULT = 25;
+export const HISTORY_MAX = 100;
+
+export interface HistoryEntry {
+  ts: number;
+  label: string;
+  kind: TriggerKind;
+  via: 'direct' | 'relay';
+  result: 'sent' | 'no-connection';
+  /** Upstream HTTP status when known (relay, or a CORS-readable direct call). */
+  status?: number;
+  ok?: boolean;
+  error?: string;
+}
+
+export function relayConfigured(relay: RelayConfig | undefined): relay is RelayConfig {
+  return !!relay && !!relay.url.trim() && !!relay.secret.trim();
 }
 
 export function emptyConfig(): FireConfig {

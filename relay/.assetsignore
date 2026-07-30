@@ -1,0 +1,4 @@
+# Keep the Worker script itself from being served as a public static asset when
+# deployed via Cloudflare's "Upload Static Files" (static-assets advanced mode).
+# _worker.js is the Worker entry, not a file to hand out.
+_worker.js

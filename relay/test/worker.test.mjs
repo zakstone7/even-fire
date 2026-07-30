@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import worker, { isBlockedHost, safeEqual } from '../src/worker.mjs';
+import worker, { isBlockedHost, safeEqual } from '../_worker.js';
 
 const ENV = { RELAY_SECRET: 'topsecret' };
 

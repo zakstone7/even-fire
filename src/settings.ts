@@ -14,17 +14,59 @@
 import type { EvenAppBridge } from '@evenrealities/even_hub_sdk';
 import {
   HTTP_METHODS,
+  HISTORY_MAX,
   MAX_TRIGGERS,
   emptyRawConfig,
+  relayConfigured,
   type FireConfig,
+  type HistoryEntry,
   type HttpMethod,
+  type RelayConfig,
   type Trigger,
   type TriggerKind,
 } from './types';
 import { saveConfig } from './config';
-import { test, type TestResult } from './execute';
+import { execute, type FireResult } from './execute';
+import { clearHistory, readHistory, recordHistory } from './history';
 import { clampLabel, maskKey, uuid } from './util';
 import { clearDiag, readDiag } from './diag';
+
+/** Where to report bugs / ask questions. */
+const ISSUES_URL = 'https://github.com/zakstone7/even-fire/issues';
+
+/** Optional "Buy me a coffee" tip link. Replace with your own page URL. */
+const COFFEE_URL = 'https://www.buymeacoffee.com/zakstone7';
+
+/** The self-hosted relay setup guide (relay/README.md). HEAD = default branch. */
+const RELAY_SETUP_URL =
+  'https://github.com/zakstone7/even-fire/blob/HEAD/relay/README.md';
+
+/** The relay Worker source, inlined at build time from relay/_worker.js (see
+ *  build.mjs). Lets the app offer a one-click download of `_worker.js`. */
+declare const __RELAY_WORKER_SRC__: string;
+
+/** Private/reserved URL → must fire direct (relay can't reach a LAN). */
+function isLocalUrl(url: string): boolean {
+  try {
+    const h = new URL(url).hostname.toLowerCase();
+    if (h === 'localhost' || h.endsWith('.local') || h.endsWith('.internal')) return true;
+    const m = h.match(/^(\d{1,3})\.(\d{1,3})\./);
+    if (m) {
+      const a = Number(m[1]);
+      const b = Number(m[2]);
+      return (
+        a === 10 ||
+        a === 127 ||
+        (a === 192 && b === 168) ||
+        (a === 172 && b >= 16 && b <= 31) ||
+        (a === 169 && b === 254)
+      );
+    }
+  } catch {
+    /* not a URL yet */
+  }
+  return false;
+}
 
 interface EditState {
   draft: Trigger;
@@ -70,7 +112,16 @@ export class SettingsApp {
       this.root.append(this.editorView(this.editing));
       return;
     }
-    this.root.append(this.disclosure(), this.keySection(), this.triggerSection(), this.diagSection());
+    this.root.append(
+      this.disclosure(),
+      this.keySection(),
+      this.triggerSection(),
+      this.relaySection(),
+      this.historySection(),
+      this.supportSection(),
+      this.coffeeSection(),
+      this.diagSection(),
+    );
   }
 
   private header(): HTMLElement {
@@ -248,6 +299,8 @@ export class SettingsApp {
     confirmRow.append(cb, document.createTextNode(' Require confirm on glasses (for destructive triggers)'));
     s.append(confirmRow);
 
+    s.append(this.relayToggle(d));
+
     // Kind-specific fields.
     if (d.kind === 'ifttt') s.append(this.iftttFields(d));
     else s.append(this.rawFields(d));
@@ -365,8 +418,13 @@ export class SettingsApp {
 
   private async runTest(d: Trigger, resultEl: HTMLElement): Promise<void> {
     resultEl.replaceChildren(el('p', 'fire-help', 'Sending…'));
-    const r: TestResult = await test(d, this.config.key);
+    const r = await execute(d, { key: this.config.key, relay: this.config.relay, readBody: true });
     resultEl.replaceChildren(renderTestResult(r));
+    void recordHistory(
+      this.bridge,
+      { ts: Date.now(), label: d.label || d.event || 'Test', kind: d.kind, via: r.via, result: r.result, status: r.status, ok: r.ok, error: r.error },
+      this.config.historyLimit,
+    );
   }
 
   private async save(state: EditState, errEl: HTMLElement): Promise<void> {
@@ -382,6 +440,8 @@ export class SettingsApp {
     else {
       delete d.event;
       delete d.values;
+      // A local endpoint can't go through a cloud relay — keep it direct.
+      if (isLocalUrl(d.raw?.url ?? '')) d.useRelay = false;
     }
     const existing = this.config.triggers.findIndex((t) => t.id === d.id);
     if (existing >= 0) this.config.triggers[existing] = d;
@@ -394,6 +454,173 @@ export class SettingsApp {
   private cancel(): void {
     this.editing = null;
     this.render();
+  }
+
+  // --- Relay (self-hosted) -------------------------------------------------
+
+  private relayToggle(d: Trigger): HTMLElement {
+    const wrap = el('div', 'fire-relaytoggle');
+    const configured = relayConfigured(this.config.relay);
+    const localUrl = d.kind === 'raw' && isLocalUrl(d.raw?.url ?? '');
+    if (localUrl) d.useRelay = false;
+
+    const row = el('label', 'fire-toggle');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = Boolean(d.useRelay) && configured && !localUrl;
+    cb.disabled = !configured || localUrl;
+    cb.onchange = () => (d.useRelay = cb.checked);
+    row.append(cb, document.createTextNode(' Route through relay (real status/body for any host)'));
+    wrap.append(row);
+
+    if (!configured) {
+      wrap.append(el('p', 'fire-help', 'Set up a relay in the Relay section below to enable this.'));
+    } else if (localUrl) {
+      wrap.append(el('p', 'fire-help', 'Local address — fired directly from your phone (relays can’t reach a LAN).'));
+    }
+    return wrap;
+  }
+
+  private relaySection(): HTMLElement {
+    const s = section('Relay (self-hosted)');
+    s.append(
+      el(
+        'p',
+        'fire-help',
+        'Optional. A relay you host on Cloudflare makes triggers show real responses ' +
+          '(status + body) for any host, bypassing CORS. Set it up in a few minutes ' +
+          '(no CLI needed), then enable it per trigger. Leave blank to fire everything directly.',
+      ),
+    );
+
+    // Setup: open the step-by-step guide, and a one-click download of the Worker
+    // file to upload to Cloudflare (source inlined at build time → offline).
+    const setupRow = el('div', 'fire-row');
+    setupRow.append(
+      button('📖 Setup instructions', () => void window.open(RELAY_SETUP_URL, '_blank'), 'primary'),
+      button('⬇ Download _worker.js', () => this.downloadWorker()),
+    );
+    s.append(setupRow);
+    s.append(
+      el('p', 'fire-help', 'Follow the instructions: download _worker.js, upload it to a Cloudflare Worker, then paste the URL + secret below.'),
+    );
+
+    const relay = this.config.relay ?? { url: '', secret: '' };
+
+    const urlField = field('Relay URL', relay.url, (v) => void this.setRelayField('url', v));
+    urlField.querySelector('input')?.setAttribute('inputmode', 'url');
+
+    const secretWrap = el('label', 'fire-field');
+    secretWrap.append(el('span', 'fire-label', 'Relay secret'));
+    const secret = document.createElement('input');
+    secret.type = 'password';
+    secret.className = 'fire-input';
+    secret.value = relay.secret;
+    secret.placeholder = 'RELAY_SECRET';
+    secret.autocomplete = 'off';
+    secret.spellcheck = false;
+    secret.onchange = () => void this.setRelayField('secret', secret.value);
+    secretWrap.append(secret);
+
+    s.append(urlField, secretWrap);
+    if (relayConfigured(this.config.relay)) {
+      s.append(el('p', 'fire-help', 'Relay configured ✓ — turn it on per trigger in the editor.'));
+    }
+    return s;
+  }
+
+  private async setRelayField(part: 'url' | 'secret', value: string): Promise<void> {
+    const cur = this.config.relay ?? { url: '', secret: '' };
+    const next: RelayConfig = { ...cur, [part]: value.trim() };
+    this.config.relay = next.url || next.secret ? next : undefined;
+    await this.persist();
+  }
+
+  /** Save the relay Worker (`_worker.js`) to the device — one click, offline. */
+  private downloadWorker(): void {
+    const src = __RELAY_WORKER_SRC__;
+    try {
+      const blob = new Blob([src], { type: 'text/javascript' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = '_worker.js';
+      a.rel = 'noopener';
+      document.body.append(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+    } catch {
+      // Fallback for WebViews that block blob-URL downloads: open a data URL in a
+      // new tab so the user can save it manually.
+      const data = 'data:text/javascript;charset=utf-8,' + encodeURIComponent(src);
+      window.open(data, '_blank');
+    }
+  }
+
+  // --- Recent calls (on-device history) ------------------------------------
+
+  private historySection(): HTMLElement {
+    const s = section('Recent calls');
+    const limitWrap = el('label', 'fire-field fire-inline');
+    limitWrap.append(el('span', 'fire-label', 'Keep last'));
+    const limitInput = document.createElement('input');
+    limitInput.type = 'number';
+    limitInput.min = '0';
+    limitInput.max = String(HISTORY_MAX);
+    limitInput.className = 'fire-input fire-num';
+    limitInput.value = String(this.config.historyLimit ?? 25);
+    limitInput.onchange = () => void this.setHistoryLimit(Number(limitInput.value));
+    limitWrap.append(limitInput);
+
+    const pre = el('pre', 'fire-diag');
+    const row = el('div', 'fire-row');
+    row.append(
+      button('Refresh', () => void this.loadHistory(pre)),
+      button('Clear', () => void this.clearHistoryUi(pre), 'danger'),
+    );
+    s.append(limitWrap, row, pre);
+    void this.loadHistory(pre);
+    return s;
+  }
+
+  private async setHistoryLimit(n: number): Promise<void> {
+    this.config.historyLimit = Math.max(0, Math.min(HISTORY_MAX, Math.round(n || 0)));
+    await this.persist();
+  }
+
+  private async loadHistory(pre: HTMLElement): Promise<void> {
+    const list = await readHistory(this.bridge);
+    pre.textContent = list.length ? list.map(fmtHistory).join('\n') : 'No calls yet.';
+  }
+
+  private async clearHistoryUi(pre: HTMLElement): Promise<void> {
+    await clearHistory(this.bridge);
+    pre.textContent = 'Cleared.';
+  }
+
+  // --- Support -------------------------------------------------------------
+
+  private supportSection(): HTMLElement {
+    const s = section('Support');
+    s.append(
+      el('p', 'fire-help', 'Bug or question? Open an issue on GitHub — please include what you tried and any status from the recent-calls list above.'),
+    );
+    // Open on the user gesture, no window features (avoids iOS popup-block).
+    s.append(button('Report an issue on GitHub', () => void window.open(ISSUES_URL, '_blank'), 'primary'));
+    return s;
+  }
+
+  // --- Buy me a coffee -----------------------------------------------------
+
+  private coffeeSection(): HTMLElement {
+    const s = section('Enjoying Fire?');
+    s.append(
+      el('p', 'fire-help', 'Fire is free with no accounts or backend. If it saves you a tap, you can leave a tip.'),
+    );
+    // Open on the user gesture, no window features (avoids iOS popup-block).
+    s.append(button('☕ Buy me a coffee', () => void window.open(COFFEE_URL, '_blank'), 'primary'));
+    return s;
   }
 
   // --- Diagnostics ---------------------------------------------------------
@@ -461,21 +688,40 @@ function validate(d: Trigger): string | null {
   return null;
 }
 
-function renderTestResult(r: TestResult): HTMLElement {
+function renderTestResult(r: FireResult): HTMLElement {
   const box = el('div', 'fire-result');
+  const via = r.via === 'relay' ? ' · via relay' : '';
   if (r.error) {
-    box.append(el('div', 'fire-result-status bad', 'Failed'), el('pre', 'fire-diag', r.error));
+    box.append(el('div', 'fire-result-status bad', `Failed${via}`), el('pre', 'fire-diag', r.error));
     return box;
   }
   if (r.status != null) {
-    const ok = r.ok;
-    box.append(el('div', `fire-result-status ${ok ? 'good' : 'bad'}`, `${r.status} ${r.statusText ?? ''}`.trim()));
+    box.append(
+      el('div', `fire-result-status ${r.ok ? 'good' : 'bad'}`, `${r.status} ${r.statusText ?? ''}${via}`.trim()),
+    );
     box.append(el('pre', 'fire-diag', r.body && r.body.length ? r.body : '(empty response body)'));
   } else {
-    box.append(el('div', 'fire-result-status good', 'Sent'));
+    box.append(el('div', 'fire-result-status good', `Sent${via}`));
     if (r.note) box.append(el('p', 'fire-help', r.note));
   }
   return box;
+}
+
+function fmtHistory(e: HistoryEntry): string {
+  let t = '';
+  try {
+    t = new Date(e.ts).toLocaleTimeString();
+  } catch {
+    /* ignore */
+  }
+  const outcome = e.error
+    ? `ERR ${e.error}`.slice(0, 60)
+    : e.status != null
+      ? `${e.status}${e.ok ? '' : ' !'}`
+      : e.result === 'sent'
+        ? 'sent'
+        : 'no-conn';
+  return `${t}  ${e.label}  [${e.via}]  ${outcome}`;
 }
 
 function kindRadio(current: TriggerKind, onChange: (k: TriggerKind) => void): HTMLElement {
@@ -638,6 +884,10 @@ function injectStyleOnce(): void {
   .fire-result-status.good { color: var(--accent); }
   .fire-result-status.bad { color: var(--danger); }
   .fire-diag { background: #0b0e0c; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-top: 8px; font: 12px/1.4 ui-monospace, monospace; color: #b9d9b9; white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow: auto; }
+  .fire-relaytoggle { margin: 10px 0; }
+  .fire-inline { display: flex; align-items: center; gap: 10px; }
+  .fire-inline .fire-label { margin: 0; }
+  .fire-num { width: 80px; flex: 0 0 auto; }
   `;
   const style = document.createElement('style');
   style.textContent = css;
