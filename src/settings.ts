@@ -37,9 +37,9 @@ const ISSUES_URL = 'https://github.com/zakstone7/even-fire/issues';
 /** Optional "Buy me a coffee" tip link. Replace with your own page URL. */
 const COFFEE_URL = 'https://www.buymeacoffee.com/zakstone7';
 
-/** The self-hosted relay setup guide (relay/README.md). */
+/** The self-hosted relay setup guide (relay/README.md). HEAD = default branch. */
 const RELAY_SETUP_URL =
-  'https://github.com/zakstone7/even-fire/blob/claude/self-hosted-relay/relay/README.md';
+  'https://github.com/zakstone7/even-fire/blob/HEAD/relay/README.md';
 
 /** The relay Worker source, inlined at build time from relay/_worker.js (see
  *  build.mjs). Lets the app offer a one-click download of `_worker.js`. */
