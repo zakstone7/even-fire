@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.7
+
+- Fix: the relay "Save _worker.js" button could appear to do nothing — awaiting
+  the WebView's share/file-picker (which the Even App only stubs) hung or died
+  silently. Save is now synchronous and always shows a result: it copies the
+  code and shows a status line with a browser link to the file, then fires
+  native share as a non-blocking best effort. It can no longer hang.
+
 ## 0.3.6
 
 - Relay "Save _worker.js" now tries harder and never dead-ends: File System

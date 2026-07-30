@@ -78,11 +78,6 @@ interface EditState {
   isNew: boolean;
 }
 
-/** Minimal shape of a File System Access API handle (feature-detected). */
-interface FsHandle {
-  createWritable(): Promise<{ write(data: string): Promise<void>; close(): Promise<void> }>;
-}
-
 export class SettingsApp {
   private root: HTMLElement;
   private editingKey: boolean;
@@ -645,86 +640,53 @@ export class SettingsApp {
   }
 
   /**
-   * Save `_worker.js` to the device. A plain `<a download>` no-ops in the Even
-   * App's WebView (flutter_inappwebview provides no host download handler), so
-   * try every mechanism that can actually reach the OS with a correctly-named
-   * file, in order of reliability, then fall back to copying the code.
+   * "Save _worker.js". A plain `<a download>` no-ops in the Even App's WebView
+   * (flutter_inappwebview has no host download handler), and awaiting
+   * `navigator.share` / `showSaveFilePicker` can hang or die silently if the
+   * WebView only stubs them — which looks like "the button does nothing".
    *
-   * The file name must stay exactly `_worker.js`, so only mechanisms that let us
-   * set the name count (which rules out generic `data:` downloads).
+   * So this is deliberately SYNCHRONOUS and always produces a visible result:
+   *   - immediately copies the code (for the paste method) and shows a status
+   *     line with a browser link to the file (opening an http URL DOES work
+   *     here — that's how other buttons reach the web);
+   *   - then fires native file-share as a non-blocking best effort (on iOS this
+   *     opens the share sheet → Save to Files; if unsupported it's a no-op and
+   *     the visible status is already there).
    */
-  private async saveWorker(status: HTMLElement): Promise<void> {
+  private saveWorker(status: HTMLElement): void {
     const src = __RELAY_WORKER_SRC__;
     const name = '_worker.js';
-    const win = window as unknown as { showSaveFilePicker?: (o: unknown) => Promise<FsHandle> };
-    const nav = navigator as Navigator & {
-      canShare?: (d?: unknown) => boolean;
-      share?: (d: unknown) => Promise<void>;
-    };
-    const isAbort = (e: unknown): boolean => !!e && (e as Error).name === 'AbortError';
-    const done = (msg: string): void => {
-      status.textContent = msg;
-      status.style.display = '';
-    };
 
-    // 1. File System Access API — user picks a location; name is preserved.
-    //    (Chromium desktop and some Android WebViews.)
-    if (typeof win.showSaveFilePicker === 'function') {
-      try {
-        const handle = await win.showSaveFilePicker({
-          suggestedName: name,
-          types: [{ description: 'JavaScript', accept: { 'text/javascript': ['.js'] } }],
-        });
-        const w = await handle.createWritable();
-        await w.write(src);
-        await w.close();
-        done('Saved _worker.js ✓');
-        return;
-      } catch (e) {
-        if (isAbort(e)) return;
-      }
-    }
-
-    // 2. Web Share with a File — the share sheet → "Save to Files" (iOS/WKWebView).
-    //    Try even if canShare is absent; some WebViews expose share without it.
-    try {
-      const file = new File([src], name, { type: 'text/javascript' });
-      if (typeof nav.share === 'function' && (!nav.canShare || nav.canShare({ files: [file] }))) {
-        try {
-          await nav.share({ files: [file], title: name });
-          return;
-        } catch (e) {
-          if (isAbort(e)) return;
-        }
-      }
-    } catch {
-      /* File ctor or share unsupported — fall through */
-    }
-
-    // (A plain <a download> blob click is intentionally omitted: it no-ops in
-    // the Even App's WebView, and browsers that would honor it are already
-    // covered by 1–2 above.)
-
-    // 3. Guaranteed fallback: copy the code for the paste method, and offer a
-    //    browser link (opening an http URL DOES work in this WebView) so the
-    //    user can save the real file from their browser if they want the
-    //    Upload-Static-Files path.
-    const copied = await copyText(src);
+    // Always-visible result FIRST, so the button never appears to do nothing.
+    void copyText(src);
     status.replaceChildren();
     status.append(
-      document.createTextNode(
-        copied
-          ? 'This app can’t save files here, so the code was copied — just use “Paste the code” (step 3). '
-          : 'This app can’t save files here. Open “Show Worker code” below and copy it, then use the paste method (step 3). ',
-      ),
+      document.createTextNode('Code copied — paste it into a Hello World Worker (step 3; always works). To get the file instead, '),
     );
     const openLink = document.createElement('a');
     openLink.href = RAW_WORKER_URL;
     openLink.target = '_blank';
     openLink.rel = 'noopener noreferrer';
-    openLink.textContent = 'Or open the file in your browser to save it.';
-    status.append(openLink);
+    openLink.textContent = 'open _worker.js in your browser';
+    status.append(openLink, document.createTextNode(' and use Share → Save to Files.'));
     status.style.display = '';
+
+    // Best-effort native share (iOS: share sheet). Fire-and-forget within the
+    // click gesture; never awaited, so it can't hang the UI.
+    try {
+      const nav = navigator as Navigator & {
+        canShare?: (d?: unknown) => boolean;
+        share?: (d: unknown) => Promise<void>;
+      };
+      if (typeof nav.share === 'function') {
+        const file = new File([src], name, { type: 'text/javascript' });
+        if (!nav.canShare || nav.canShare({ files: [file] })) {
+          void nav.share({ files: [file], title: name }).catch(() => {});
+        }
+      }
+    } catch {
+      /* share unsupported — the visible status above already covers it */
+    }
   }
 
   // --- Recent calls (on-device history) ------------------------------------
