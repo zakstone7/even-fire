@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.4
+
+- Relay setup instructions now open **inside the app** (a full page with a Back
+  button) instead of sending you to GitHub.
+- Replaced the file "Download" (which didn't work in the in-app WebView) with a
+  reliable **Copy Worker code** button, plus the full code in a "Show Worker
+  code" panel you can always select and copy manually. The in-app steps use the
+  copy-and-paste-into-a-Hello-World-Worker method, which works on a phone.
+
 ## 0.3.3
 
 - Fix: when a fire failed, the glasses "No connection" screen only let you tap to

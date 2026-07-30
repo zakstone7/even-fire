@@ -77,6 +77,8 @@ export class SettingsApp {
   private root: HTMLElement;
   private editingKey: boolean;
   private editing: EditState | null = null;
+  /** When set, an in-app full-page view is shown instead of the settings list. */
+  private viewing: 'relay-help' | null = null;
 
   constructor(
     private readonly bridge: EvenAppBridge,
@@ -108,6 +110,10 @@ export class SettingsApp {
     injectStyleOnce();
     this.root.replaceChildren();
     this.root.append(this.header());
+    if (this.viewing === 'relay-help') {
+      this.root.append(this.relayHelpView());
+      return;
+    }
     if (this.editing) {
       this.root.append(this.editorView(this.editing));
       return;
@@ -491,16 +497,16 @@ export class SettingsApp {
       ),
     );
 
-    // Setup: open the step-by-step guide, and a one-click download of the Worker
-    // file to upload to Cloudflare (source inlined at build time → offline).
-    const setupRow = el('div', 'fire-row');
-    setupRow.append(
-      button('📖 Setup instructions', () => void window.open(RELAY_SETUP_URL, '_blank'), 'primary'),
-      button('⬇ Download _worker.js', () => this.downloadWorker()),
-    );
-    s.append(setupRow);
+    // Setup instructions are shown in-app (below) rather than sending you to
+    // GitHub. The step-by-step page includes the Worker code + a Copy button.
     s.append(
-      el('p', 'fire-help', 'Follow the instructions: download _worker.js, upload it to a Cloudflare Worker, then paste the URL + secret below.'),
+      button('📖 Relay setup instructions', () => {
+        this.viewing = 'relay-help';
+        this.render();
+      }, 'primary'),
+    );
+    s.append(
+      el('p', 'fire-help', 'Set up a Cloudflare Worker, then paste its URL + secret below.'),
     );
 
     const relay = this.config.relay ?? { url: '', secret: '' };
@@ -534,26 +540,83 @@ export class SettingsApp {
     await this.persist();
   }
 
-  /** Save the relay Worker (`_worker.js`) to the device — one click, offline. */
-  private downloadWorker(): void {
-    const src = __RELAY_WORKER_SRC__;
-    try {
-      const blob = new Blob([src], { type: 'text/javascript' });
-      const url = URL.createObjectURL(blob);
+  /** In-app relay setup guide (no GitHub round-trip). Back returns to settings. */
+  private relayHelpView(): HTMLElement {
+    const s = el('section', 'fire-section');
+    const back = () => {
+      this.viewing = null;
+      this.render();
+    };
+    s.append(button('← Back', back));
+    s.append(el('h2', 'fire-h2', 'Relay setup'));
+    s.append(
+      el(
+        'p',
+        'fire-help',
+        'A relay is a tiny Cloudflare Worker you host on your own free account. It ' +
+          'lets Raw triggers show the real status + body (bypassing CORS). About 5 ' +
+          'minutes, all on your phone — no computer or CLI needed.',
+      ),
+    );
+
+    const ol = document.createElement('ol');
+    ol.className = 'fire-steps';
+    const step = (...nodes: (string | Node)[]): void => {
+      const li = document.createElement('li');
+      li.append(...nodes.map((n) => (typeof n === 'string' ? document.createTextNode(n) : n)));
+      ol.append(li);
+    };
+    const link = (href: string, text: string): HTMLAnchorElement => {
       const a = document.createElement('a');
-      a.href = url;
-      a.download = '_worker.js';
-      a.rel = 'noopener';
-      document.body.append(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 2000);
-    } catch {
-      // Fallback for WebViews that block blob-URL downloads: open a data URL in a
-      // new tab so the user can save it manually.
-      const data = 'data:text/javascript;charset=utf-8,' + encodeURIComponent(src);
-      window.open(data, '_blank');
-    }
+      a.href = href;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      a.textContent = text;
+      return a;
+    };
+
+    step('Create a free Cloudflare account at ', link('https://dash.cloudflare.com/sign-up', 'dash.cloudflare.com/sign-up'), ' (no card needed).');
+    step('In the dashboard: Build → Compute (Workers) → Create application → Hello World. Name it (e.g. fire-relay), Deploy, then Edit code.');
+    step('Tap “Copy Worker code” below. In the Cloudflare editor, select all the starter code, delete it, paste, and Deploy.');
+    step('On the Worker page: Settings → Variables and Secrets → Add. Name it RELAY_SECRET, value a long random string, choose Encrypt, and Deploy. Keep this value.');
+    step('Open your Worker URL with /health added (e.g. https://fire-relay.<you>.workers.dev/health) — you should see {"ok":true}.');
+    step('Come back here (← Back), paste the Worker URL + the secret into the Relay fields, then turn on “Route through relay” per trigger.');
+    s.append(ol);
+
+    // Getting the code: Copy is reliable in the WebView; the code is also shown
+    // below so it can always be selected manually.
+    const copyBtn = button('📋 Copy Worker code', (e) => void this.copyWorker(e.currentTarget as HTMLButtonElement), 'primary');
+    s.append(copyBtn);
+
+    const details = document.createElement('details');
+    details.className = 'fire-details';
+    const summary = document.createElement('summary');
+    summary.textContent = 'Show Worker code';
+    const pre = el('pre', 'fire-diag');
+    pre.textContent = __RELAY_WORKER_SRC__;
+    details.append(summary, pre);
+    s.append(details);
+
+    s.append(
+      el('p', 'fire-help', 'Tip: if the Copy button ever fails, open “Show Worker code”, long-press, Select all, and copy.'),
+    );
+
+    // Optional: the same guide on GitHub, for desktop / more detail.
+    const more = el('p', 'fire-help');
+    more.append(document.createTextNode('More detail (incl. the upload-file method): '), link(RELAY_SETUP_URL, 'guide on GitHub'));
+    s.append(more);
+
+    s.append(button('← Back', back));
+    return s;
+  }
+
+  private async copyWorker(btn: HTMLButtonElement): Promise<void> {
+    const ok = await copyText(__RELAY_WORKER_SRC__);
+    const prev = btn.textContent;
+    btn.textContent = ok ? 'Copied!' : 'Copy failed — use “Show Worker code”';
+    setTimeout(() => {
+      btn.textContent = prev;
+    }, 1800);
   }
 
   // --- Recent calls (on-device history) ------------------------------------
@@ -852,6 +915,9 @@ function injectStyleOnce(): void {
   .fire-mask { flex: 1 1 auto; font-family: ui-monospace, monospace; letter-spacing: 1px; color: var(--muted); }
   .fire-toggle { display: flex; gap: 8px; align-items: center; font-size: 13px; margin: 8px 0; }
   .fire-values .fire-field { margin-bottom: 6px; }
+  .fire-steps { margin: 8px 0 12px; padding-left: 22px; }
+  .fire-steps li { margin: 0 0 10px; line-height: 1.45; color: var(--muted); }
+  .fire-steps a { color: var(--accent, #7fd17f); }
   .fire-details { margin: 8px 0; }
   .fire-details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
   .fire-help { color: var(--muted); font-size: 13px; }
