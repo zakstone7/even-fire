@@ -584,10 +584,15 @@ export class SettingsApp {
     step('Come back here (← Back), paste the Worker URL + the secret into the Relay fields, then turn on “Route through relay” per trigger.');
     s.append(ol);
 
-    // Getting the code: Copy is reliable in the WebView; the code is also shown
-    // below so it can always be selected manually.
-    const copyBtn = button('📋 Copy Worker code', (e) => void this.copyWorker(e.currentTarget as HTMLButtonElement), 'primary');
-    s.append(copyBtn);
+    // Getting the code onto the phone. Two ways, both work from the WebView:
+    //   Save file  → share sheet / download → upload it to Cloudflare, OR
+    //   Copy code  → paste into a Hello World Worker.
+    const getRow = el('div', 'fire-row');
+    getRow.append(
+      button('⬇ Save _worker.js', (e) => void this.saveWorker(e.currentTarget as HTMLButtonElement), 'primary'),
+      button('📋 Copy Worker code', (e) => void this.copyWorker(e.currentTarget as HTMLButtonElement)),
+    );
+    s.append(getRow);
 
     const details = document.createElement('details');
     details.className = 'fire-details';
@@ -599,7 +604,14 @@ export class SettingsApp {
     s.append(details);
 
     s.append(
-      el('p', 'fire-help', 'Tip: if the Copy button ever fails, open “Show Worker code”, long-press, Select all, and copy.'),
+      el(
+        'p',
+        'fire-help',
+        '“Save” opens your share sheet — choose Save to Files to get _worker.js, ' +
+          'then upload it (Cloudflare → Create application → Upload Static Files). ' +
+          '“Copy” is for the paste method above. If both fail, open “Show Worker ' +
+          'code”, long-press, Select all, and copy.',
+      ),
     );
 
     // Optional: the same guide on GitHub, for desktop / more detail.
@@ -618,6 +630,70 @@ export class SettingsApp {
     setTimeout(() => {
       btn.textContent = prev;
     }, 1800);
+  }
+
+  /**
+   * Save `_worker.js` to the device. Plain `<a download>` no-ops in the Even
+   * App's WebView (no host download handler), so try the mechanisms that
+   * actually reach the OS, in order:
+   *   1. Web Share with a File — opens the share sheet → "Save to Files"
+   *      (works in WKWebView / flutter_inappwebview, the common iOS case).
+   *   2. Anchor blob download — works where the WebView *does* handle downloads.
+   *   3. Copy to clipboard — always works; last resort.
+   */
+  private async saveWorker(btn: HTMLButtonElement): Promise<void> {
+    const src = __RELAY_WORKER_SRC__;
+    const name = '_worker.js';
+    const flash = (msg: string, ms = 1800): void => {
+      const prev = btn.textContent;
+      btn.textContent = msg;
+      setTimeout(() => {
+        btn.textContent = prev;
+      }, ms);
+    };
+
+    // 1. Web Share with a file.
+    try {
+      const file = new File([src], name, { type: 'text/javascript' });
+      const nav = navigator as Navigator & {
+        canShare?: (d?: unknown) => boolean;
+        share?: (d: unknown) => Promise<void>;
+      };
+      if (nav.canShare && nav.share && nav.canShare({ files: [file] })) {
+        try {
+          await nav.share({ files: [file], title: name });
+          return; // shared (or user handled it)
+        } catch (err) {
+          // User dismissed the share sheet — that's fine, don't fall through.
+          if (err && (err as Error).name === 'AbortError') return;
+          // Otherwise share isn't really available; try the next mechanism.
+        }
+      }
+    } catch {
+      /* File/share unsupported — fall through */
+    }
+
+    // 2. Anchor blob download.
+    try {
+      const url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = name;
+      a.rel = 'noopener';
+      document.body.append(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      // Can't detect a silent no-op; nudge toward Copy if nothing happened.
+      flash('Saving… no prompt? Use Copy', 2600);
+      return;
+    } catch {
+      /* fall through */
+    }
+
+    // 3. Clipboard fallback.
+    const ok = await copyText(src);
+    flash(ok ? 'Copied code instead' : 'Use “Show Worker code”', 2200);
   }
 
   // --- Recent calls (on-device history) ------------------------------------

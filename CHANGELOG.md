@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.5
+
+- Relay setup: bring back a working **Save `_worker.js`** button. A plain
+  download no-ops in the Even App's WebView, so it now tries the Web Share sheet
+  (Save to Files) first, then a blob download, then falls back to copying — so
+  you can get the actual file to use Cloudflare's "Upload Static Files", or copy
+  the code to paste. "Show Worker code" remains as a manual fallback.
+
 ## 0.3.4
 
 - Relay setup instructions now open **inside the app** (a full page with a Back
