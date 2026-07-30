@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.6
+
+- Relay "Save _worker.js" now tries harder and never dead-ends: File System
+  Access (Save dialog) → Web Share (Save to Files) → and if the WebView blocks
+  both, it copies the code AND shows a tappable link to open the file in your
+  phone browser (where Save works). It always tells you what happened instead
+  of silently doing nothing. The reliable Copy → paste route is called out as
+  easiest.
+
 ## 0.3.5
 
 - Relay setup: bring back a working **Save `_worker.js`** button. A plain

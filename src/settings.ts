@@ -41,6 +41,11 @@ const COFFEE_URL = 'https://www.buymeacoffee.com/zakstone7';
 const RELAY_SETUP_URL =
   'https://github.com/zakstone7/even-fire/blob/HEAD/relay/README.md';
 
+/** Raw relay Worker file — for saving via the phone browser if the in-app
+ *  save can't hand off a file. HEAD = default branch. */
+const RAW_WORKER_URL =
+  'https://github.com/zakstone7/even-fire/raw/HEAD/relay/_worker.js';
+
 /** The relay Worker source, inlined at build time from relay/_worker.js (see
  *  build.mjs). Lets the app offer a one-click download of `_worker.js`. */
 declare const __RELAY_WORKER_SRC__: string;
@@ -71,6 +76,11 @@ function isLocalUrl(url: string): boolean {
 interface EditState {
   draft: Trigger;
   isNew: boolean;
+}
+
+/** Minimal shape of a File System Access API handle (feature-detected). */
+interface FsHandle {
+  createWritable(): Promise<{ write(data: string): Promise<void>; close(): Promise<void> }>;
 }
 
 export class SettingsApp {
@@ -588,11 +598,13 @@ export class SettingsApp {
     //   Save file  → share sheet / download → upload it to Cloudflare, OR
     //   Copy code  → paste into a Hello World Worker.
     const getRow = el('div', 'fire-row');
+    const saveStatus = el('p', 'fire-help');
+    saveStatus.style.display = 'none';
     getRow.append(
-      button('⬇ Save _worker.js', (e) => void this.saveWorker(e.currentTarget as HTMLButtonElement), 'primary'),
+      button('⬇ Save _worker.js', () => void this.saveWorker(saveStatus), 'primary'),
       button('📋 Copy Worker code', (e) => void this.copyWorker(e.currentTarget as HTMLButtonElement)),
     );
-    s.append(getRow);
+    s.append(getRow, saveStatus);
 
     const details = document.createElement('details');
     details.className = 'fire-details';
@@ -607,10 +619,10 @@ export class SettingsApp {
       el(
         'p',
         'fire-help',
-        '“Save” opens your share sheet — choose Save to Files to get _worker.js, ' +
-          'then upload it (Cloudflare → Create application → Upload Static Files). ' +
-          '“Copy” is for the paste method above. If both fail, open “Show Worker ' +
-          'code”, long-press, Select all, and copy.',
+        'Easiest: “Copy” the code, then paste it into a Hello World Worker (step 3) ' +
+          '— this always works. “Save” tries to hand off the _worker.js file (share ' +
+          'sheet → Save to Files) if you’d rather use Upload Static Files; if this ' +
+          'app can’t save files, it’ll tell you and copy the code instead.',
       ),
     );
 
@@ -633,67 +645,86 @@ export class SettingsApp {
   }
 
   /**
-   * Save `_worker.js` to the device. Plain `<a download>` no-ops in the Even
-   * App's WebView (no host download handler), so try the mechanisms that
-   * actually reach the OS, in order:
-   *   1. Web Share with a File — opens the share sheet → "Save to Files"
-   *      (works in WKWebView / flutter_inappwebview, the common iOS case).
-   *   2. Anchor blob download — works where the WebView *does* handle downloads.
-   *   3. Copy to clipboard — always works; last resort.
+   * Save `_worker.js` to the device. A plain `<a download>` no-ops in the Even
+   * App's WebView (flutter_inappwebview provides no host download handler), so
+   * try every mechanism that can actually reach the OS with a correctly-named
+   * file, in order of reliability, then fall back to copying the code.
+   *
+   * The file name must stay exactly `_worker.js`, so only mechanisms that let us
+   * set the name count (which rules out generic `data:` downloads).
    */
-  private async saveWorker(btn: HTMLButtonElement): Promise<void> {
+  private async saveWorker(status: HTMLElement): Promise<void> {
     const src = __RELAY_WORKER_SRC__;
     const name = '_worker.js';
-    const flash = (msg: string, ms = 1800): void => {
-      const prev = btn.textContent;
-      btn.textContent = msg;
-      setTimeout(() => {
-        btn.textContent = prev;
-      }, ms);
+    const win = window as unknown as { showSaveFilePicker?: (o: unknown) => Promise<FsHandle> };
+    const nav = navigator as Navigator & {
+      canShare?: (d?: unknown) => boolean;
+      share?: (d: unknown) => Promise<void>;
+    };
+    const isAbort = (e: unknown): boolean => !!e && (e as Error).name === 'AbortError';
+    const done = (msg: string): void => {
+      status.textContent = msg;
+      status.style.display = '';
     };
 
-    // 1. Web Share with a file.
+    // 1. File System Access API — user picks a location; name is preserved.
+    //    (Chromium desktop and some Android WebViews.)
+    if (typeof win.showSaveFilePicker === 'function') {
+      try {
+        const handle = await win.showSaveFilePicker({
+          suggestedName: name,
+          types: [{ description: 'JavaScript', accept: { 'text/javascript': ['.js'] } }],
+        });
+        const w = await handle.createWritable();
+        await w.write(src);
+        await w.close();
+        done('Saved _worker.js ✓');
+        return;
+      } catch (e) {
+        if (isAbort(e)) return;
+      }
+    }
+
+    // 2. Web Share with a File — the share sheet → "Save to Files" (iOS/WKWebView).
+    //    Try even if canShare is absent; some WebViews expose share without it.
     try {
       const file = new File([src], name, { type: 'text/javascript' });
-      const nav = navigator as Navigator & {
-        canShare?: (d?: unknown) => boolean;
-        share?: (d: unknown) => Promise<void>;
-      };
-      if (nav.canShare && nav.share && nav.canShare({ files: [file] })) {
+      if (typeof nav.share === 'function' && (!nav.canShare || nav.canShare({ files: [file] }))) {
         try {
           await nav.share({ files: [file], title: name });
-          return; // shared (or user handled it)
-        } catch (err) {
-          // User dismissed the share sheet — that's fine, don't fall through.
-          if (err && (err as Error).name === 'AbortError') return;
-          // Otherwise share isn't really available; try the next mechanism.
+          return;
+        } catch (e) {
+          if (isAbort(e)) return;
         }
       }
     } catch {
-      /* File/share unsupported — fall through */
+      /* File ctor or share unsupported — fall through */
     }
 
-    // 2. Anchor blob download.
-    try {
-      const url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = name;
-      a.rel = 'noopener';
-      document.body.append(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 2000);
-      // Can't detect a silent no-op; nudge toward Copy if nothing happened.
-      flash('Saving… no prompt? Use Copy', 2600);
-      return;
-    } catch {
-      /* fall through */
-    }
+    // (A plain <a download> blob click is intentionally omitted: it no-ops in
+    // the Even App's WebView, and browsers that would honor it are already
+    // covered by 1–2 above.)
 
-    // 3. Clipboard fallback.
-    const ok = await copyText(src);
-    flash(ok ? 'Copied code instead' : 'Use “Show Worker code”', 2200);
+    // 3. Guaranteed fallback: copy the code for the paste method, and offer a
+    //    browser link (opening an http URL DOES work in this WebView) so the
+    //    user can save the real file from their browser if they want the
+    //    Upload-Static-Files path.
+    const copied = await copyText(src);
+    status.replaceChildren();
+    status.append(
+      document.createTextNode(
+        copied
+          ? 'This app can’t save files here, so the code was copied — just use “Paste the code” (step 3). '
+          : 'This app can’t save files here. Open “Show Worker code” below and copy it, then use the paste method (step 3). ',
+      ),
+    );
+    const openLink = document.createElement('a');
+    openLink.href = RAW_WORKER_URL;
+    openLink.target = '_blank';
+    openLink.rel = 'noopener noreferrer';
+    openLink.textContent = 'Or open the file in your browser to save it.';
+    status.append(openLink);
+    status.style.display = '';
   }
 
   // --- Recent calls (on-device history) ------------------------------------
