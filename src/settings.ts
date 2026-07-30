@@ -31,14 +31,15 @@ import { clearHistory, readHistory, recordHistory } from './history';
 import { clampLabel, maskKey, uuid } from './util';
 import { clearDiag, readDiag } from './diag';
 
-/** Support contact — a mailto with diagnostics prefilled. */
-const SUPPORT_EMAIL = 'zakstone7@gmail.com';
+/** Where to report bugs / ask questions. */
+const ISSUES_URL = 'https://github.com/zakstone7/even-fire/issues';
 
 /** Optional "Buy me a coffee" tip link. Replace with your own page URL. */
 const COFFEE_URL = 'https://www.buymeacoffee.com/zakstone7';
 
-/** Where to get / deploy the self-hosted relay (the relay/ folder in the repo). */
-const RELAY_REPO_URL = 'https://github.com/zakstone7/even-fire/tree/main/relay';
+/** The self-hosted relay setup guide (relay/README.md). */
+const RELAY_SETUP_URL =
+  'https://github.com/zakstone7/even-fire/blob/claude/self-hosted-relay/relay/README.md';
 
 /** The relay Worker source, inlined at build time from relay/_worker.js (see
  *  build.mjs). Lets the app offer a one-click download of `_worker.js`. */
@@ -482,27 +483,26 @@ export class SettingsApp {
 
   private relaySection(): HTMLElement {
     const s = section('Relay (self-hosted)');
-    const help = el(
-      'p',
-      'fire-help',
-      'Optional. A relay you host on Cloudflare makes triggers show real responses ' +
-        '(status + body) for any host, bypassing CORS. Deploy it in a few minutes ' +
-        '(no CLI needed) from ',
-    );
-    const repo = document.createElement('a');
-    repo.href = RELAY_REPO_URL;
-    repo.target = '_blank';
-    repo.rel = 'noopener noreferrer';
-    repo.textContent = 'the relay setup guide';
-    help.append(repo, document.createTextNode(', then enable it per trigger. Leave blank to fire everything directly.'));
-    s.append(help);
-
-    // One-click download of the Worker file to upload to Cloudflare (step 1 of
-    // the guide). The source is inlined at build time, so this is offline.
-    const dl = button('⬇ Download _worker.js', () => this.downloadWorker(), 'primary');
-    s.append(dl);
     s.append(
-      el('p', 'fire-help', 'Step 1 of setup: save this and upload it to a Cloudflare Worker (details in the guide).'),
+      el(
+        'p',
+        'fire-help',
+        'Optional. A relay you host on Cloudflare makes triggers show real responses ' +
+          '(status + body) for any host, bypassing CORS. Set it up in a few minutes ' +
+          '(no CLI needed), then enable it per trigger. Leave blank to fire everything directly.',
+      ),
+    );
+
+    // Setup: open the step-by-step guide, and a one-click download of the Worker
+    // file to upload to Cloudflare (source inlined at build time → offline).
+    const setupRow = el('div', 'fire-row');
+    setupRow.append(
+      button('📖 Setup instructions', () => void window.open(RELAY_SETUP_URL, '_blank'), 'primary'),
+      button('⬇ Download _worker.js', () => this.downloadWorker()),
+    );
+    s.append(setupRow);
+    s.append(
+      el('p', 'fire-help', 'Follow the instructions: download _worker.js, upload it to a Cloudflare Worker, then paste the URL + secret below.'),
     );
 
     const relay = this.config.relay ?? { url: '', secret: '' };
@@ -604,9 +604,10 @@ export class SettingsApp {
   private supportSection(): HTMLElement {
     const s = section('Support');
     s.append(
-      el('p', 'fire-help', 'Bug or question? Send a ticket — it prefills recent diagnostics to help debug.'),
+      el('p', 'fire-help', 'Bug or question? Open an issue on GitHub — please include what you tried and any status from the recent-calls list above.'),
     );
-    s.append(button('Contact support', () => void this.contactSupport(), 'primary'));
+    // Open on the user gesture, no window features (avoids iOS popup-block).
+    s.append(button('Report an issue on GitHub', () => void window.open(ISSUES_URL, '_blank'), 'primary'));
     return s;
   }
 
@@ -620,27 +621,6 @@ export class SettingsApp {
     // Open on the user gesture, no window features (avoids iOS popup-block).
     s.append(button('☕ Buy me a coffee', () => void window.open(COFFEE_URL, '_blank'), 'primary'));
     return s;
-  }
-
-  private async contactSupport(): Promise<void> {
-    let diag = '';
-    try {
-      diag = await readDiag(this.bridge);
-    } catch {
-      /* ignore */
-    }
-    const body = [
-      'Describe the issue:',
-      '',
-      '',
-      '--- diagnostics (please keep) ---',
-      `triggers: ${this.config.triggers.length}`,
-      `relay: ${relayConfigured(this.config.relay) ? 'configured' : 'none'}`,
-      `diag: ${diag ? diag.slice(0, 1500) : 'none'}`,
-    ].join('\n');
-    const url = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('Fire support')}&body=${encodeURIComponent(body)}`;
-    // Open on the user gesture, no window features (avoids iOS popup-block).
-    window.open(url, '_blank');
   }
 
   // --- Diagnostics ---------------------------------------------------------

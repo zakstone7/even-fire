@@ -248,9 +248,10 @@ live in [`relay/`](relay/) (`cd relay && npm test`, no Cloudflare account needed
 
 ## Support
 
-The phone settings include a **Contact support** button that opens your mail app
-with a prefilled message including recent diagnostics (a trivial, zero-backend
-ticket path). No data leaves the device unless you send the email.
+The phone settings include a **Report an issue on GitHub** button that opens the
+repo's [issue tracker](https://github.com/zakstone7/even-fire/issues). There's no
+email/backend — bugs and questions go through GitHub. The recent-calls list gives
+you the status to include.
 
 Fire is free — no accounts, no backend, no paid tier. The settings also carry an
 optional **Buy me a coffee** tip button (set `COFFEE_URL` in `src/settings.ts`).

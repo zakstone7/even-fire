@@ -2,6 +2,12 @@
 
 ## 0.3.2
 
+- Support is now via GitHub Issues, not email: the settings have a **Report an
+  issue on GitHub** button (opens the repo's issue tracker) in place of the old
+  mailto "Contact support" flow.
+- New **📖 Setup instructions** button in the Relay settings that opens the
+  step-by-step relay guide, next to the Download `_worker.js` button.
+
 - The self-hosted relay lives in [`relay/`](relay/) again (a separate repo
   bought nothing — Cloudflare can't import a repo). The Worker is a single
   `_worker.js` you download and upload straight to the Cloudflare dashboard
