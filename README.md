@@ -206,7 +206,7 @@ Recent-calls **history** is stored separately under `fire.history.v1`
 | **Sending** | during the request | — |
 | **Sent** | request reached the endpoint (outcome opaque) | tap or ~2s auto-dismiss → list |
 | **Result** | relay returned a real status (e.g. "Fired 200" / "Failed 401") | tap or ~2s auto-dismiss → list |
-| **No connection** | transport failure (or Raw CORS block) | tap = retry, double-tap = back |
+| **No connection** | transport failure (or Raw CORS block) | 2-item list: `Retry` / `Back` |
 | **Key missing** | firing an IFTTT trigger with no key set | points to the phone app |
 | **Empty** | no triggers | points to the phone app |
 

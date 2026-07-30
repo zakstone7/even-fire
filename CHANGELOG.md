@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.3
+
+- Fix: when a fire failed, the glasses "No connection" screen only let you tap to
+  retry — the only way back to the list was an undiscoverable double-tap. It's
+  now a 2-item list, **Retry** / **Back**, so returning to the menu is always a
+  visible choice.
+
 ## 0.3.2
 
 - Support is now via GitHub Issues, not email: the settings have a **Report an

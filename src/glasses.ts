@@ -10,8 +10,9 @@
  *
  * Screen flow (see README §"Glasses screens"):
  *   list ──tap──▶ (confirm?) ──▶ sending ──▶ sent (auto-dismiss ~2s) ──▶ list
- *                                     └──────▶ no-connection ──tap──▶ retry
- *   key-missing / empty are shown instead of the list when appropriate.
+ *                                     └──────▶ no-connection ──▶ Retry / Back
+ *   no-connection is a 2-item list (Retry / Back) so there's always a visible
+ *   way back to the list. key-missing / empty replace the list when appropriate.
  *
  * Honesty rule: a resolved fetch shows "Sent", never "Success"/"Done"/✓ — CORS
  * makes the real applet outcome invisible (see ifttt.ts).
@@ -143,7 +144,8 @@ export class GlassesApp {
       case 'result':
         return textPage(this.resultText);
       case 'no-connection':
-        return textPage('No connection\nTap to retry');
+        // A 2-item list so "Back" is a visible choice, not a hidden double-tap.
+        return listPage([retryLabel(), backLabel()], 'No connection');
       case 'key-missing':
         return textPage('Set your Webhooks key\nin the phone app');
       case 'empty':
@@ -259,7 +261,8 @@ export class GlassesApp {
         return;
       }
       case 'no-connection': {
-        if (this.lastAttempt) void this.attemptFire(this.lastAttempt);
+        // Item 0 = Retry, item 1 = Back to the list.
+        if (index === 0 && this.lastAttempt) void this.attemptFire(this.lastAttempt);
         else void this.renderRoot();
         return;
       }
@@ -360,7 +363,15 @@ function cancelLabel(): string {
   return 'Cancel';
 }
 
-function listPage(items: string[]): Page {
+function retryLabel(): string {
+  return 'Retry';
+}
+
+function backLabel(): string {
+  return 'Back';
+}
+
+function listPage(items: string[], titleText: string = TITLE): Page {
   const TITLE_H = 40;
   const LIST_TOP = TITLE_H + 12;
   const title = new TextContainerProperty({
@@ -371,7 +382,7 @@ function listPage(items: string[]): Page {
     containerID: TITLE_ID,
     containerName: 'fire-title',
     isEventCapture: 0, // label only; the list captures input
-    content: TITLE,
+    content: titleText,
   });
   const list = new ListContainerProperty({
     xPosition: MARGIN,

@@ -1,6 +1,6 @@
 {
   "name": "fire",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "private": true,
   "type": "module",
   "description": "Tap a name on your Even G2 glasses, fire a webhook. Bring your own Webhooks key.",
