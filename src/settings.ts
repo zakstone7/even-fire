@@ -41,10 +41,6 @@ const COFFEE_URL = 'https://www.buymeacoffee.com/zakstone7';
 const RELAY_SETUP_URL =
   'https://github.com/zakstone7/even-fire/blob/HEAD/relay/README.md';
 
-/** Raw relay Worker file — for saving via the phone browser if the in-app
- *  save can't hand off a file. HEAD = default branch. */
-const RAW_WORKER_URL =
-  'https://github.com/zakstone7/even-fire/raw/HEAD/relay/_worker.js';
 
 /** The relay Worker source, inlined at build time from relay/_worker.js (see
  *  build.mjs). Lets the app offer a one-click download of `_worker.js`. */
@@ -596,17 +592,10 @@ export class SettingsApp {
     step('Come back here (← Back), paste the Worker URL + the secret into the Relay fields, then turn on “Route through relay” per trigger.');
     s.append(ol);
 
-    // Getting the code onto the phone. Two ways, both work from the WebView:
-    //   Save file  → share sheet / download → upload it to Cloudflare, OR
-    //   Copy code  → paste into a Hello World Worker.
-    const getRow = el('div', 'fire-row');
-    const saveStatus = el('p', 'fire-help');
-    saveStatus.style.display = 'none';
-    getRow.append(
-      button('⬇ Save _worker.js', () => void this.saveWorker(saveStatus), 'primary'),
-      button('📋 Copy Worker code', (e) => void this.copyWorker(e.currentTarget as HTMLButtonElement)),
-    );
-    s.append(getRow, saveStatus);
+    // Get the code onto Cloudflare. Copy is the reliable route in the WebView
+    // (a file download / external browser aren't available from inside the app),
+    // so the steps above use copy → paste into a Hello World Worker.
+    s.append(button('📋 Copy Worker code', (e) => void this.copyWorker(e.currentTarget as HTMLButtonElement), 'primary'));
 
     const details = document.createElement('details');
     details.className = 'fire-details';
@@ -621,16 +610,16 @@ export class SettingsApp {
       el(
         'p',
         'fire-help',
-        'Easiest: “Copy” the code, then paste it into a Hello World Worker (step 3) ' +
-          '— this always works. “Save” tries to hand off the _worker.js file (share ' +
-          'sheet → Save to Files) if you’d rather use Upload Static Files; if this ' +
-          'app can’t save files, it’ll tell you and copy the code instead.',
+        'Tap Copy, then paste into the Hello World Worker (step 3) and Deploy. ' +
+          'If Copy ever fails, open “Show Worker code”, long-press, Select all, copy. ' +
+          '(Prefer uploading the file on a computer? The same code is _worker.js in ' +
+          'the guide.)',
       ),
     );
 
-    // Optional: the same guide on GitHub, for desktop / more detail.
+    // Optional: the same guide on GitHub, for reading / the desktop upload method.
     const more = el('p', 'fire-help');
-    more.append(document.createTextNode('More detail (incl. the upload-file method): '), link(RELAY_SETUP_URL, 'guide on GitHub'));
+    more.append(document.createTextNode('Full guide: '), link(RELAY_SETUP_URL, 'relay setup on GitHub'));
     s.append(more);
 
     s.append(button('← Back', back));
@@ -644,62 +633,6 @@ export class SettingsApp {
     setTimeout(() => {
       btn.textContent = prev;
     }, 1800);
-  }
-
-  /**
-   * "Save _worker.js". A plain `<a download>` no-ops in the Even App's WebView
-   * (flutter_inappwebview has no host download handler), and awaiting
-   * `navigator.share` / `showSaveFilePicker` can hang or die silently if the
-   * WebView only stubs them — which looks like "the button does nothing".
-   *
-   * So this is deliberately SYNCHRONOUS and always produces a visible result:
-   *   - immediately copies the code (for the paste method) and shows a status
-   *     line with a browser link to the file (opening an http URL DOES work
-   *     here — that's how other buttons reach the web);
-   *   - then fires native file-share as a non-blocking best effort (on iOS this
-   *     opens the share sheet → Save to Files; if unsupported it's a no-op and
-   *     the visible status is already there).
-   */
-  private saveWorker(status: HTMLElement): void {
-    const src = __RELAY_WORKER_SRC__;
-    const name = '_worker.js';
-
-    // Always-visible result FIRST, so the button never appears to do nothing.
-    void copyText(src);
-    status.replaceChildren();
-    status.append(
-      document.createTextNode('Code copied — paste it into a Hello World Worker (step 3; always works). To get the file instead, '),
-    );
-    const openLink = document.createElement('a');
-    openLink.href = RAW_WORKER_URL;
-    openLink.target = '_blank';
-    openLink.rel = 'noopener noreferrer';
-    openLink.textContent = 'open _worker.js in your browser';
-    // Use window.open (like the coffee/issue buttons) — more likely to hit the
-    // real browser than an <a target="_blank">, which the app opens in-app.
-    openLink.onclick = (e) => {
-      e.preventDefault();
-      window.open(RAW_WORKER_URL, '_blank');
-    };
-    status.append(openLink, document.createTextNode(' and use Share → Save to Files.'));
-    status.style.display = '';
-
-    // Best-effort native share (iOS: share sheet). Fire-and-forget within the
-    // click gesture; never awaited, so it can't hang the UI.
-    try {
-      const nav = navigator as Navigator & {
-        canShare?: (d?: unknown) => boolean;
-        share?: (d: unknown) => Promise<void>;
-      };
-      if (typeof nav.share === 'function') {
-        const file = new File([src], name, { type: 'text/javascript' });
-        if (!nav.canShare || nav.canShare({ files: [file] })) {
-          void nav.share({ files: [file], title: name }).catch(() => {});
-        }
-      }
-    } catch {
-      /* share unsupported — the visible status above already covers it */
-    }
   }
 
   // --- Recent calls (on-device history) ------------------------------------

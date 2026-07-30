@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.9
+
+- Relay setup simplified to the one method that works from inside the app:
+  **Copy Worker code → paste into a Hello World Worker**. The Even App routes
+  every link to its in-app browser and blocks file saves, so a file download /
+  external browser genuinely isn't possible from the WebView — the misleading
+  "Save _worker.js" button is removed. (Uploading the file still works on a
+  computer; the same code is `_worker.js` in the guide.)
+
 ## 0.3.8
 
 - Relay setup links (incl. "open _worker.js in your browser") now open via
