@@ -487,7 +487,7 @@ export class SettingsApp {
         'fire-help',
         'Optional. A relay you host on Cloudflare makes triggers show real responses ' +
           '(status + body) for any host, bypassing CORS. Set it up in a few minutes ' +
-          '(no CLI needed), then enable it per trigger. Leave blank to fire everything directly.',
+          'on your phone (no CLI needed), then enable it per trigger. Leave blank to fire everything directly.',
       ),
     );
 
