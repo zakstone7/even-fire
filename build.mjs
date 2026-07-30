@@ -14,7 +14,7 @@
 
 import { build, context } from 'esbuild';
 import { rm, mkdir, cp, readFile, writeFile, readdir } from 'node:fs/promises';
-import { existsSync, createReadStream, readFileSync } from 'node:fs';
+import { existsSync, createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { networkInterfaces } from 'node:os';
@@ -61,11 +61,6 @@ async function emitHtmlAndAssets(jsFile) {
   }
 }
 
-// Inline the relay Worker source so the phone app can offer a one-click download
-// of `_worker.js`. Read from relay/ at build time → single source of truth (the
-// file the user deploys is byte-identical to relay/_worker.js, no committed copy).
-const relayWorkerSrc = readFileSync(resolve(root, 'relay/_worker.js'), 'utf8');
-
 const buildOptions = {
   // Object form fixes the output base name to `app` (→ app-[hash].js).
   entryPoints: { app: resolve(root, 'src/main.ts') },
@@ -78,7 +73,6 @@ const buildOptions = {
   sourcemap: watch ? 'inline' : false,
   minify: !watch,
   logLevel: 'info',
-  define: { __RELAY_WORKER_SRC__: JSON.stringify(relayWorkerSrc) },
 };
 
 const MIME = {

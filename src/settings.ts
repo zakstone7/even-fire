@@ -48,9 +48,6 @@ const RAW_WORKER_URL =
   'https://github.com/zakstone7/even-fire/releases/download/relay-latest/_worker.js';
 
 
-/** The relay Worker source, inlined at build time from relay/_worker.js (see
- *  build.mjs). Lets the app offer a one-click download of `_worker.js`. */
-declare const __RELAY_WORKER_SRC__: string;
 
 /** Private/reserved URL → must fire direct (relay can't reach a LAN). */
 function isLocalUrl(url: string): boolean {
@@ -598,38 +595,19 @@ export class SettingsApp {
     step('Come back here (← Back), paste the Worker URL + the secret into the Relay fields, then turn on “Route through relay” per trigger.');
     s.append(ol);
 
-    // Two ways to get the Worker to Cloudflare. Copying the download link is the
-    // nicer default: paste it into your own browser to download _worker.js
-    // (the in-app browser can't save, but yours can), then Upload Static Files.
-    // Copying the code is the alternative — paste it into a Hello World Worker.
-    const getRow = el('div', 'fire-row');
-    getRow.append(
-      button('🔗 Copy download link', (e) => void this.copyLink(e.currentTarget as HTMLButtonElement), 'primary'),
-      button('📋 Copy Worker code', (e) => void this.copyWorker(e.currentTarget as HTMLButtonElement)),
-    );
-    s.append(getRow);
-
-    const details = document.createElement('details');
-    details.className = 'fire-details';
-    const summary = document.createElement('summary');
-    summary.textContent = 'Show Worker code';
-    const pre = el('pre', 'fire-diag');
-    pre.textContent = __RELAY_WORKER_SRC__;
-    details.append(summary, pre);
-    s.append(details);
-
+    // Copy the download link, paste it into your own browser to save _worker.js
+    // (it force-downloads with the right name), then Upload Static Files.
+    s.append(button('🔗 Copy download link', (e) => void this.copyLink(e.currentTarget as HTMLButtonElement), 'primary'));
     s.append(
       el(
         'p',
         'fire-help',
-        '“Copy download link” gives you the URL to _worker.js — paste it into your ' +
-          'phone browser to save the file, then upload it (step 3). Prefer not to ' +
-          'download? “Copy Worker code” instead, and paste it into a Hello World ' +
-          'Worker (Create application → Hello World → Edit code).',
+        'Tap this, then paste the link into your phone browser — it downloads ' +
+          '_worker.js, which you upload in step 3.',
       ),
     );
 
-    // Optional: the same guide on GitHub, for reading / the desktop upload method.
+    // Optional: the same guide on GitHub, for reading / the desktop method.
     const more = el('p', 'fire-help');
     more.append(document.createTextNode('Full guide: '), link(RELAY_SETUP_URL, 'relay setup on GitHub'));
     s.append(more);
@@ -645,15 +623,6 @@ export class SettingsApp {
     setTimeout(() => {
       btn.textContent = prev;
     }, 2200);
-  }
-
-  private async copyWorker(btn: HTMLButtonElement): Promise<void> {
-    const ok = await copyText(__RELAY_WORKER_SRC__);
-    const prev = btn.textContent;
-    btn.textContent = ok ? 'Copied!' : 'Copy failed — use “Show Worker code”';
-    setTimeout(() => {
-      btn.textContent = prev;
-    }, 1800);
   }
 
   // --- Recent calls (on-device history) ------------------------------------

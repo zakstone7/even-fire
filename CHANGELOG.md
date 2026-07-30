@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.12
+
+- Relay setup streamlined to the download-link flow: removed the "Copy Worker
+  code" button and the "Show Worker code" panel (and the paste-into-Hello-World
+  wording). Setup is now: Copy download link → save _worker.js in your browser →
+  Upload Static Files. The worker source is no longer embedded in the app
+  bundle.
+
 ## 0.3.11
 
 - The "Copy download link" now points at a **release asset** published by a new
