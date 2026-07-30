@@ -30,20 +30,22 @@ Cloudflare's dashboard. ~5 minutes.
 
 ### 1. Download the Worker
 
-**Easiest — from the app:** open Fire on your phone → settings → **Relay** →
-**⬇ Download `_worker.js`**. One tap saves the file (it's bundled into the app,
-so this works offline). This is the recommended way.
+**From the app:** open Fire on your phone → settings → **Relay setup
+instructions** → **🔗 Copy download link**, then paste that link into your own
+browser (Safari/Chrome) — it downloads **`_worker.js`** directly.
 
-Alternatives if you'd rather grab it from GitHub:
+**Direct link (force-downloads):**
+<https://github.com/zakstone7/even-fire/releases/download/relay-latest/_worker.js>
 
-- **Direct link:** <https://github.com/zakstone7/even-fire/raw/HEAD/relay/_worker.js>
-  — tap, then save with your browser's **Save / Download** (share sheet →
-  *Save to Files*, or ⋮ → *Download*).
-- Or open [`_worker.js`](_worker.js) in the repo and use GitHub's **Download raw
-  file** button (the ⤓ icon at the top-right).
+This is a release asset (kept current by
+[`.github/workflows/relay-asset.yml`](../.github/workflows/relay-asset.yml)), so
+it saves with the correct name in one step. Keep it named exactly
+**`_worker.js`** — Cloudflare only runs an uploaded file as a Worker when it's
+named that.
 
-Keep the name exactly **`_worker.js`** — Cloudflare only runs an uploaded file as
-a Worker when it's named that.
+> Don't want to download at all? In the app tap **📋 Copy Worker code** and paste
+> it into a Hello World Worker instead (Create application → Hello World → Edit
+> code). Same result.
 
 ### 2. Create the Worker from it
 

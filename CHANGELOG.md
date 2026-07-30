@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.11
+
+- The "Copy download link" now points at a **release asset** published by a new
+  GitHub Action (`.github/workflows/relay-asset.yml`) on the `relay-latest` tag.
+  A release-asset URL force-downloads with the correct filename, so pasting it
+  into your browser saves `_worker.js` in one step (the raw URL only showed the
+  code inline).
+
 ## 0.3.10
 
 - Relay setup: add a **Copy download link** button (the nicer default) that

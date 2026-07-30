@@ -41,10 +41,11 @@ const COFFEE_URL = 'https://www.buymeacoffee.com/zakstone7';
 const RELAY_SETUP_URL =
   'https://github.com/zakstone7/even-fire/blob/HEAD/relay/README.md';
 
-/** Direct link to the relay Worker file — copy it and open in your own browser
- *  to download _worker.js. HEAD = default branch. */
+/** Direct download of the relay Worker file. This is a release asset (published
+ *  by .github/workflows/relay-asset.yml), so it force-downloads as _worker.js —
+ *  paste it into your own browser and it saves, correctly named. */
 const RAW_WORKER_URL =
-  'https://github.com/zakstone7/even-fire/raw/HEAD/relay/_worker.js';
+  'https://github.com/zakstone7/even-fire/releases/download/relay-latest/_worker.js';
 
 
 /** The relay Worker source, inlined at build time from relay/_worker.js (see

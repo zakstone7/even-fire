@@ -1,0 +1,37 @@
+name: Publish relay worker asset
+
+# Publishes relay/_worker.js as a downloadable release asset under a stable tag
+# (relay-latest). A release-asset URL is served with Content-Disposition:
+# attachment, so it force-downloads with the right filename — unlike the raw
+# file URL, which browsers show inline. The in-app "Copy download link" button
+# points at this asset.
+
+on:
+  push:
+    branches: [claude/even-fire-repo-6xy7n4]
+    paths:
+      - relay/_worker.js
+      - .github/workflows/relay-asset.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create or update the relay-latest release with _worker.js
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if ! gh release view relay-latest >/dev/null 2>&1; then
+            gh release create relay-latest \
+              --title "Relay worker (latest)" \
+              --notes "Auto-published _worker.js for the Fire self-hosted relay. Download it and upload to a Cloudflare Worker (Create application → Upload Static Files), or use the in-app 'Copy download link' button." \
+              --latest=false
+          fi
+          gh release upload relay-latest relay/_worker.js --clobber
