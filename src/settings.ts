@@ -37,15 +37,13 @@ const ISSUES_URL = 'https://github.com/zakstone7/even-fire/issues';
 /** Optional "Buy me a coffee" tip link. Replace with your own page URL. */
 const COFFEE_URL = 'https://www.buymeacoffee.com/zakstone7';
 
-/** The self-hosted relay setup guide (relay/README.md). HEAD = default branch. */
-const RELAY_SETUP_URL =
-  'https://github.com/zakstone7/even-fire/blob/HEAD/relay/README.md';
+/** One-tap Netlify deploy of the relay: clones the template into the user's own
+ *  account and prompts for RELAY_SECRET. Paste into a browser to run it. */
+const NETLIFY_DEPLOY_URL =
+  'https://app.netlify.com/start/deploy?repository=https://github.com/zakstone7/even-fire-relay';
 
-/** Direct download of the relay Worker file. This is a release asset (published
- *  by .github/workflows/relay-asset.yml), so it force-downloads as _worker.js —
- *  paste it into your own browser and it saves, correctly named. */
-const RAW_WORKER_URL =
-  'https://github.com/zakstone7/even-fire/releases/download/relay-latest/_worker.js';
+/** The self-hosted relay guide (Netlify one-tap deploy + a Cloudflare option). */
+const RELAY_SETUP_URL = 'https://github.com/zakstone7/even-fire-relay';
 
 
 
@@ -558,9 +556,10 @@ export class SettingsApp {
       el(
         'p',
         'fire-help',
-        'A relay is a tiny Cloudflare Worker you host on your own free account. It ' +
-          'lets Raw triggers show the real status + body (bypassing CORS). About 5 ' +
-          'minutes, all on your phone — no computer or CLI needed.',
+        'A relay is a tiny server you host on your own free account. It lets Raw ' +
+          'triggers show the real status + body (bypassing CORS). The easiest way ' +
+          'is a one-tap deploy to Netlify — a few minutes, all on your phone, no ' +
+          'computer or CLI.',
       ),
     );
 
@@ -587,29 +586,29 @@ export class SettingsApp {
       return a;
     };
 
-    step('Create a free Cloudflare account at ', link('https://dash.cloudflare.com/sign-up', 'dash.cloudflare.com/sign-up'), ' (no card needed).');
-    step('Get the Worker file: tap “Copy download link” below, paste it into your phone browser (Safari/Chrome), and save _worker.js.');
-    step('In the dashboard: Build → Compute (Workers) → Create application → Upload Static Files. Name it (e.g. fire-relay), upload the _worker.js you saved, and Deploy.');
-    step('On the Worker page: Settings → Variables and Secrets → Add. Name it RELAY_SECRET, value a long random string, choose Encrypt, and Deploy. Keep this value.');
-    step('Open your Worker URL with /health added (e.g. https://fire-relay.<you>.workers.dev/health) — you should see {"ok":true}.');
-    step('Come back here (← Back), paste the Worker URL + the secret into the Relay fields, then turn on “Route through relay” per trigger.');
+    step('Tap “Copy deploy link” below, then paste it into your phone browser (Safari/Chrome) and open it.');
+    step('Sign in to Netlify (free — you can use your GitHub login). It copies the relay into your account.');
+    step('When prompted, enter a RELAY_SECRET: a long random string (a password manager’s “strong password” is perfect). Keep it — you’ll paste it here too.');
+    step('Tap Deploy. When it finishes, open Site settings to find your site URL, e.g. https://your-name.netlify.app.');
+    step('Check it’s live: open that URL with /health added — you should see {"ok":true}.');
+    step('Come back here (← Back), paste the site URL as Relay URL and your RELAY_SECRET as Relay secret, then turn on “Route through relay” per trigger.');
     s.append(ol);
 
-    // Copy the download link, paste it into your own browser to save _worker.js
-    // (it force-downloads with the right name), then Upload Static Files.
-    s.append(button('🔗 Copy download link', (e) => void this.copyLink(e.currentTarget as HTMLButtonElement), 'primary'));
+    // Copy the Netlify deploy link; the user opens it in their own browser to
+    // clone + deploy the relay into their own account (prompts for RELAY_SECRET).
+    s.append(button('🔗 Copy deploy link', (e) => void this.copyLink(e.currentTarget as HTMLButtonElement), 'primary'));
     s.append(
       el(
         'p',
         'fire-help',
-        'Tap this, then paste the link into your phone browser — it downloads ' +
-          '_worker.js, which you upload in step 3.',
+        'Paste the link into your browser and follow the prompts. It sets up a ' +
+          'free Netlify site that only you control.',
       ),
     );
 
-    // Optional: the same guide on GitHub, for reading / the desktop method.
+    // Optional: the full guide (incl. a Cloudflare alternative) on GitHub.
     const more = el('p', 'fire-help');
-    more.append(document.createTextNode('Full guide: '), link(RELAY_SETUP_URL, 'relay setup on GitHub'));
+    more.append(document.createTextNode('Full guide (and a Cloudflare option): '), link(RELAY_SETUP_URL, 'relay setup on GitHub'));
     s.append(more);
 
     s.append(button('← Back', back));
@@ -617,7 +616,7 @@ export class SettingsApp {
   }
 
   private async copyLink(btn: HTMLButtonElement): Promise<void> {
-    const ok = await copyText(RAW_WORKER_URL);
+    const ok = await copyText(NETLIFY_DEPLOY_URL);
     const prev = btn.textContent;
     btn.textContent = ok ? 'Link copied! Paste in your browser' : 'Copy failed';
     setTimeout(() => {

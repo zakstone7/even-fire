@@ -224,27 +224,30 @@ Repeat taps on the same trigger are debounced (~1.5s) to survive a bouncy pad.
 
 The CORS constraint above means a Raw trigger fired directly can never see the
 real status or body of a cross-origin response, and custom methods/headers get
-preflighted. The **optional relay** removes that limit: a tiny stateless
-Cloudflare Worker you deploy to *your own* account makes the request
-server-side (where CORS doesn't apply) and returns the real result.
+preflighted. The **optional relay** removes that limit: a tiny stateless proxy
+you deploy to *your own* account makes the request server-side (where CORS
+doesn't apply) and returns the real result.
 
-- Deploy it in a few minutes and it's yours — no accounts, no billing, no
-  request logging, and no CLI required (download one file and upload it to the
-  Cloudflare dashboard). Step-by-step guide: [`relay/README.md`](relay/README.md).
-- In the app → phone settings → **Relay**, set the Worker **URL** and the
-  **secret** (`RELAY_SECRET`) you chose.
-- Enable **use relay** per Raw trigger you want proxied. With the relay on, the
-  phone test fire *and the glasses* show the real upstream status ("Fired 200" /
-  "Failed 401").
+- **Easiest — one-tap deploy to Netlify** (recommended, phone-friendly): a
+  **Deploy to Netlify** button clones the relay into your own account and prompts
+  for `RELAY_SECRET`. No CLI, no file upload, no computer. The template + button
+  live in the [even-fire-relay](https://github.com/zakstone7/even-fire-relay)
+  repo, and the in-app **Relay setup instructions** walk you through it.
+- **Alternative — Cloudflare Worker**: upload `_worker.js` via the dashboard.
+  Same relay, more manual on mobile. See [`relay/`](relay/).
+- In the app → phone settings → **Relay**, set the site **URL** and the
+  **secret** you chose. Enable **use relay** per Raw trigger; the phone test fire
+  *and the glasses* then show the real upstream status ("Fired 200" / "Failed
+  401").
 - **Local endpoints stay direct.** A relay can't reach your LAN
   (`192.168.x`, `localhost`, …), so those hosts are gated off the relay toggle
-  and fired straight from the phone. This is the local-endpoint use case: a Raw
-  trigger to a device on your network works from the phone with no relay.
+  and fired straight from the phone.
 
-The relay authenticates with a single shared secret you set (`Authorization:
-Bearer`), enforces size/timeout caps and an SSRF guard (private/reserved/metadata
-IPs blocked), and never forwards your relay secret upstream. Its source and tests
-live in [`relay/`](relay/) (`cd relay && npm test`, no Cloudflare account needed).
+Both builds authenticate with a single shared secret (`Authorization: Bearer`),
+enforce size/timeout caps and an SSRF guard (private/reserved/metadata IPs
+blocked), and never forward your relay secret upstream. The Cloudflare source +
+tests live in [`relay/`](relay/); the Netlify function + tests in
+[even-fire-relay](https://github.com/zakstone7/even-fire-relay).
 
 ## Support
 

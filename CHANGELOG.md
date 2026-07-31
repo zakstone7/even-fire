@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.13
+
+- Relay setup now recommends a **one-tap Netlify deploy** (Cloudflare's dashboard
+  is clunky on mobile). The in-app guide's button copies a Netlify Deploy link —
+  paste it into your browser, sign in, enter `RELAY_SECRET`, Deploy, and paste
+  the site URL + secret back. The Netlify function lives in the revived
+  [even-fire-relay](https://github.com/zakstone7/even-fire-relay) repo (same
+  relay contract, so nothing else changed). Cloudflare stays as an alternative.
+
 ## 0.3.12
 
 - Relay setup streamlined to the download-link flow: removed the "Copy Worker
