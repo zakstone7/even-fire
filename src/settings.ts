@@ -493,10 +493,11 @@ export class SettingsApp {
       el(
         'p',
         'fire-help',
-        'Optional. A relay you host on Cloudflare makes triggers show real responses ' +
-          '(status + body) for any host, bypassing CORS. Set it up in a few minutes ' +
-          'on your phone (no CLI needed), then enable it per trigger. Leave blank to fire everything directly. ' +
-          'Free tier allows 100k hits per day.',
+        'Optional. A relay you host (one-tap deploy to Netlify) makes triggers show ' +
+          'real responses (status + body) for any host, bypassing CORS. Set it up in ' +
+          'a few minutes on your phone (no CLI needed), then enable it per trigger. ' +
+          'Leave blank to fire everything directly. Netlify’s free tier includes ' +
+          '125k relay calls/month.',
       ),
     );
 

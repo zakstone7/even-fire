@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.14
+
+- Relay help now shows Netlify's free-tier limit (125k relay calls/month)
+  instead of Cloudflare's (the recommended path is Netlify).
+
 ## 0.3.13
 
 - Relay setup now recommends a **one-tap Netlify deploy** (Cloudflare's dashboard
